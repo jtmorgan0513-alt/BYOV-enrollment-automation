@@ -1,0 +1,8 @@
+streamlit
+requests
+Pillow
+reportlab
+streamlit-drawable-canvas
+fastapi
+uvicorn[standard]
+python-multipart
