@@ -11,13 +11,16 @@ Automated BYOV enrollment engine with VIN decoding, data collection, PDF generat
 - Email notification with submission details, PDF, and photo attachments (configurable via SMTP environment variables).
 
 ## Getting started
-1. Install dependencies:
+1. Install dependencies (preferably in a virtual environment):
    ```bash
+   python -m venv .venv
+   source .venv/bin/activate
    pip install -r requirements.txt
    ```
 
-2. Configure SMTP (optional, required for email delivery):
+2. Configure SMTP (optional, required for email delivery). You can copy `.env.example` to `.env` and fill in your credentials; `app.py` loads it automatically.
    ```bash
+   cp .env.example .env
    export SMTP_HOST="smtp.example.com"
    export SMTP_PORT="587"
    export SMTP_USERNAME="user@example.com"

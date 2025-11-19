@@ -18,6 +18,7 @@ from PIL import Image
 from reportlab.lib.pagesizes import LETTER
 from reportlab.pdfgen import canvas
 from streamlit_drawable_canvas import st_canvas
+from dotenv import load_dotenv
 
 try:
     from fastapi import FastAPI, File, UploadFile
@@ -35,6 +36,8 @@ for directory in (UPLOAD_DIR, PDF_DIR):
     directory.mkdir(exist_ok=True)
 
 VIN_DECODER_API = "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/{vin}?format=json"
+
+load_dotenv()
 
 
 def decode_vin(vin: str) -> dict:
