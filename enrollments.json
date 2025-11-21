@@ -1,0 +1,272 @@
+[
+  {
+    "id": "0d8c353e-5c3d-4d02-a293-bbae1b5632a9",
+    "tech_id": "Jmorga7",
+    "full_name": "Tyler Morgan",
+    "district": "8175",
+    "state": "North Carolina",
+    "industries": [
+      "Cook",
+      "Laundry"
+    ],
+    "vin": "1FTEW2LP5RKE34425",
+    "year": "2024",
+    "make": "FORD",
+    "model": "F-150",
+    "insurance_exp": "2025-11-21",
+    "registration_exp": "2025-11-21",
+    "status": "Active",
+    "comment": "",
+    "template_used": "template_1.pdf",
+    "signature_pdf_path": "pdfs\\Jmorga7_0d8c353e-5c3d-4d02-a293-bbae1b5632a9.pdf",
+    "vehicle_photos_paths": [
+      "uploads\\Jmorga7_0d8c353e-5c3d-4d02-a293-bbae1b5632a9\\vehicle\\vehicle_1.jpeg",
+      "uploads\\Jmorga7_0d8c353e-5c3d-4d02-a293-bbae1b5632a9\\vehicle\\vehicle_2.jpeg",
+      "uploads\\Jmorga7_0d8c353e-5c3d-4d02-a293-bbae1b5632a9\\vehicle\\vehicle_3.jpeg",
+      "uploads\\Jmorga7_0d8c353e-5c3d-4d02-a293-bbae1b5632a9\\vehicle\\vehicle_4.jpeg"
+    ],
+    "insurance_docs_paths": [
+      "uploads\\Jmorga7_0d8c353e-5c3d-4d02-a293-bbae1b5632a9\\insurance\\insurance_1.jpeg"
+    ],
+    "registration_docs_paths": [
+      "uploads\\Jmorga7_0d8c353e-5c3d-4d02-a293-bbae1b5632a9\\registration\\registration_1.jpeg"
+    ],
+    "submission_date": "2025-11-21T00:41:38.533038"
+  },
+  {
+    "id": "71313c92-4153-49bc-8764-24dc89c71bd9",
+    "tech_id": "Jmorga7",
+    "full_name": "Tyler Morgan",
+    "district": "8175",
+    "state": "North Carolina",
+    "industries": [
+      "Cook"
+    ],
+    "vin": "1FTEW2LP5RKE34425",
+    "year": "2024",
+    "make": "FORD",
+    "model": "F-150",
+    "insurance_exp": "2025-11-21",
+    "registration_exp": "2025-11-21",
+    "status": "Active",
+    "comment": "",
+    "template_used": "template_1.pdf",
+    "signature_pdf_path": "pdfs\\Jmorga7_71313c92-4153-49bc-8764-24dc89c71bd9.pdf",
+    "vehicle_photos_paths": [
+      "uploads\\Jmorga7_71313c92-4153-49bc-8764-24dc89c71bd9\\vehicle\\vehicle_1.jpeg",
+      "uploads\\Jmorga7_71313c92-4153-49bc-8764-24dc89c71bd9\\vehicle\\vehicle_2.jpeg",
+      "uploads\\Jmorga7_71313c92-4153-49bc-8764-24dc89c71bd9\\vehicle\\vehicle_3.jpeg",
+      "uploads\\Jmorga7_71313c92-4153-49bc-8764-24dc89c71bd9\\vehicle\\vehicle_4.jpeg"
+    ],
+    "insurance_docs_paths": [
+      "uploads\\Jmorga7_71313c92-4153-49bc-8764-24dc89c71bd9\\insurance\\insurance_1.jpeg"
+    ],
+    "registration_docs_paths": [
+      "uploads\\Jmorga7_71313c92-4153-49bc-8764-24dc89c71bd9\\registration\\registration_1.jpeg"
+    ],
+    "submission_date": "2025-11-21T00:43:59.882486"
+  },
+  {
+    "id": "d7455ab0-4248-4c63-b914-03c381dc5af7",
+    "tech_id": "Jmorga7",
+    "full_name": "Tyler Morgan",
+    "district": "8175",
+    "state": "North Carolina",
+    "industries": [
+      "Cook"
+    ],
+    "vin": "1FTEW2LP5RKE34425",
+    "year": "2024",
+    "make": "FORD",
+    "model": "F-150",
+    "insurance_exp": "2025-11-21",
+    "registration_exp": "2025-11-21",
+    "status": "Active",
+    "comment": "",
+    "template_used": "template_1.pdf",
+    "signature_pdf_path": "pdfs\\Jmorga7_d7455ab0-4248-4c63-b914-03c381dc5af7.pdf",
+    "vehicle_photos_paths": [
+      "uploads\\Jmorga7_d7455ab0-4248-4c63-b914-03c381dc5af7\\vehicle\\vehicle_1.jpeg",
+      "uploads\\Jmorga7_d7455ab0-4248-4c63-b914-03c381dc5af7\\vehicle\\vehicle_2.jpeg",
+      "uploads\\Jmorga7_d7455ab0-4248-4c63-b914-03c381dc5af7\\vehicle\\vehicle_3.jpeg",
+      "uploads\\Jmorga7_d7455ab0-4248-4c63-b914-03c381dc5af7\\vehicle\\vehicle_4.jpeg"
+    ],
+    "insurance_docs_paths": [
+      "uploads\\Jmorga7_d7455ab0-4248-4c63-b914-03c381dc5af7\\insurance\\insurance_1.jpeg"
+    ],
+    "registration_docs_paths": [
+      "uploads\\Jmorga7_d7455ab0-4248-4c63-b914-03c381dc5af7\\registration\\registration_1.jpeg"
+    ],
+    "submission_date": "2025-11-21T00:44:32.563161"
+  },
+  {
+    "id": "c3938242-c8d7-4415-bc8c-820f2f079dd3",
+    "tech_id": "Jmorga7",
+    "full_name": "Tyler Morgan",
+    "district": "8175",
+    "state": "North Carolina",
+    "industries": [
+      "Cook"
+    ],
+    "vin": "1FTEW2LP5RKE34425",
+    "year": "2024",
+    "make": "FORD",
+    "model": "F-150",
+    "insurance_exp": "2025-11-21",
+    "registration_exp": "2025-11-21",
+    "status": "Active",
+    "comment": "",
+    "template_used": "template_1.pdf",
+    "signature_pdf_path": "pdfs\\Jmorga7_c3938242-c8d7-4415-bc8c-820f2f079dd3.pdf",
+    "vehicle_photos_paths": [
+      "uploads\\Jmorga7_c3938242-c8d7-4415-bc8c-820f2f079dd3\\vehicle\\vehicle_1.jpeg",
+      "uploads\\Jmorga7_c3938242-c8d7-4415-bc8c-820f2f079dd3\\vehicle\\vehicle_2.jpeg",
+      "uploads\\Jmorga7_c3938242-c8d7-4415-bc8c-820f2f079dd3\\vehicle\\vehicle_3.jpeg",
+      "uploads\\Jmorga7_c3938242-c8d7-4415-bc8c-820f2f079dd3\\vehicle\\vehicle_4.jpeg"
+    ],
+    "insurance_docs_paths": [
+      "uploads\\Jmorga7_c3938242-c8d7-4415-bc8c-820f2f079dd3\\insurance\\insurance_1.jpeg"
+    ],
+    "registration_docs_paths": [
+      "uploads\\Jmorga7_c3938242-c8d7-4415-bc8c-820f2f079dd3\\registration\\registration_1.jpeg"
+    ],
+    "submission_date": "2025-11-21T00:47:23.976807"
+  },
+  {
+    "id": "1ca6c0d1-2fc9-4c36-82e7-860a41035265",
+    "tech_id": "Jmorga7",
+    "full_name": "Tyler Morgan",
+    "district": "8175",
+    "state": "Illinois",
+    "industries": [
+      "Cook",
+      "Dish",
+      "Laundry"
+    ],
+    "vin": "1FTEW2LP5RKE34425",
+    "year": "2024",
+    "make": "FORD",
+    "model": "F-150",
+    "insurance_exp": "2025-11-21",
+    "registration_exp": "2025-11-21",
+    "status": "Active",
+    "comment": "",
+    "template_used": "template_2.pdf",
+    "signature_pdf_path": "pdfs\\Jmorga7_1ca6c0d1-2fc9-4c36-82e7-860a41035265.pdf",
+    "vehicle_photos_paths": [
+      "uploads\\Jmorga7_1ca6c0d1-2fc9-4c36-82e7-860a41035265\\vehicle\\vehicle_1.jpeg",
+      "uploads\\Jmorga7_1ca6c0d1-2fc9-4c36-82e7-860a41035265\\vehicle\\vehicle_2.jpeg",
+      "uploads\\Jmorga7_1ca6c0d1-2fc9-4c36-82e7-860a41035265\\vehicle\\vehicle_3.jpeg",
+      "uploads\\Jmorga7_1ca6c0d1-2fc9-4c36-82e7-860a41035265\\vehicle\\vehicle_4.jpeg"
+    ],
+    "insurance_docs_paths": [
+      "uploads\\Jmorga7_1ca6c0d1-2fc9-4c36-82e7-860a41035265\\insurance\\insurance_1.jpeg"
+    ],
+    "registration_docs_paths": [
+      "uploads\\Jmorga7_1ca6c0d1-2fc9-4c36-82e7-860a41035265\\registration\\registration_1.jpeg"
+    ],
+    "submission_date": "2025-11-21T00:55:08.194846"
+  },
+  {
+    "id": "144e20f9-6ae7-43f5-a761-4b2ac1802a4d",
+    "tech_id": "Jmorga7",
+    "full_name": "Tyler Morgan",
+    "district": "8175",
+    "state": "North Carolina",
+    "industries": [
+      "Cook"
+    ],
+    "vin": "1FTEW2LP5RKE34425",
+    "year": "2024",
+    "make": "FORD",
+    "model": "F-150",
+    "insurance_exp": "2025-11-21",
+    "registration_exp": "2025-11-21",
+    "status": "Active",
+    "comment": "",
+    "template_used": "template_1.pdf",
+    "signature_pdf_path": "pdfs\\Jmorga7_144e20f9-6ae7-43f5-a761-4b2ac1802a4d.pdf",
+    "vehicle_photos_paths": [
+      "uploads\\Jmorga7_144e20f9-6ae7-43f5-a761-4b2ac1802a4d\\vehicle\\vehicle_1.jpeg",
+      "uploads\\Jmorga7_144e20f9-6ae7-43f5-a761-4b2ac1802a4d\\vehicle\\vehicle_2.jpeg",
+      "uploads\\Jmorga7_144e20f9-6ae7-43f5-a761-4b2ac1802a4d\\vehicle\\vehicle_3.jpeg",
+      "uploads\\Jmorga7_144e20f9-6ae7-43f5-a761-4b2ac1802a4d\\vehicle\\vehicle_4.jpeg"
+    ],
+    "insurance_docs_paths": [
+      "uploads\\Jmorga7_144e20f9-6ae7-43f5-a761-4b2ac1802a4d\\insurance\\insurance_1.jpeg"
+    ],
+    "registration_docs_paths": [
+      "uploads\\Jmorga7_144e20f9-6ae7-43f5-a761-4b2ac1802a4d\\registration\\registration_1.jpeg"
+    ],
+    "submission_date": "2025-11-21T01:08:20.797694"
+  },
+  {
+    "id": "8b604e89-df13-4f09-b901-2a9cdf1823f4",
+    "tech_id": "Jmorga7",
+    "full_name": "Tyler Morgan",
+    "district": "8175",
+    "state": "North Carolina",
+    "industries": [
+      "Cook",
+      "Dish",
+      "Ref",
+      "HVAC"
+    ],
+    "vin": "1FTEW2LP5RKE34425",
+    "year": "2024",
+    "make": "FORD",
+    "model": "F-150",
+    "insurance_exp": "2025-11-21",
+    "registration_exp": "2025-11-21",
+    "status": "Active",
+    "comment": "",
+    "template_used": "template_1.pdf",
+    "signature_pdf_path": "pdfs\\Jmorga7_8b604e89-df13-4f09-b901-2a9cdf1823f4.pdf",
+    "vehicle_photos_paths": [
+      "uploads\\Jmorga7_8b604e89-df13-4f09-b901-2a9cdf1823f4\\vehicle\\vehicle_1.jpeg",
+      "uploads\\Jmorga7_8b604e89-df13-4f09-b901-2a9cdf1823f4\\vehicle\\vehicle_2.jpeg",
+      "uploads\\Jmorga7_8b604e89-df13-4f09-b901-2a9cdf1823f4\\vehicle\\vehicle_3.jpeg",
+      "uploads\\Jmorga7_8b604e89-df13-4f09-b901-2a9cdf1823f4\\vehicle\\vehicle_4.jpeg"
+    ],
+    "insurance_docs_paths": [
+      "uploads\\Jmorga7_8b604e89-df13-4f09-b901-2a9cdf1823f4\\insurance\\insurance_1.jpeg"
+    ],
+    "registration_docs_paths": [
+      "uploads\\Jmorga7_8b604e89-df13-4f09-b901-2a9cdf1823f4\\registration\\registration_1.jpeg"
+    ],
+    "submission_date": "2025-11-21T01:12:04.209694"
+  },
+  {
+    "id": "5c207313-6baf-43d4-9609-e23e45a01efc",
+    "tech_id": "Jmorga7",
+    "full_name": "Tyler Morgan",
+    "district": "8175",
+    "state": "Alabama",
+    "industries": [
+      "Ref"
+    ],
+    "vin": "1FTEW2LP5RKE34425",
+    "year": "2024",
+    "make": "FORD",
+    "model": "F-150",
+    "insurance_exp": "2025-11-21",
+    "registration_exp": "2025-11-21",
+    "status": "Active",
+    "comment": "",
+    "template_used": "template_1.pdf",
+    "signature_pdf_path": "pdfs\\Jmorga7_5c207313-6baf-43d4-9609-e23e45a01efc.pdf",
+    "vehicle_photos_paths": [
+      "uploads\\Jmorga7_5c207313-6baf-43d4-9609-e23e45a01efc\\vehicle\\vehicle_1.jpeg",
+      "uploads\\Jmorga7_5c207313-6baf-43d4-9609-e23e45a01efc\\vehicle\\vehicle_2.jpeg",
+      "uploads\\Jmorga7_5c207313-6baf-43d4-9609-e23e45a01efc\\vehicle\\vehicle_3.jpeg",
+      "uploads\\Jmorga7_5c207313-6baf-43d4-9609-e23e45a01efc\\vehicle\\vehicle_4.jpeg"
+    ],
+    "insurance_docs_paths": [
+      "uploads\\Jmorga7_5c207313-6baf-43d4-9609-e23e45a01efc\\insurance\\insurance_1.jpeg"
+    ],
+    "registration_docs_paths": [
+      "uploads\\Jmorga7_5c207313-6baf-43d4-9609-e23e45a01efc\\registration\\registration_1.jpeg"
+    ],
+    "submission_date": "2025-11-21T01:17:57.213739"
+  }
+]

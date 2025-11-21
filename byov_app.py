@@ -131,8 +131,8 @@ def save_uploaded_files(uploaded_files, folder_path: str, prefix: str) -> list:
 
 
 def generate_signed_pdf(template_path: str, signature_image, output_path: str, 
-                        sig_x: int = 72, sig_y: int = 360) -> bool:
-    """Generate a PDF with signature overlay on page 6."""
+                        sig_x: int = 90, sig_y: int = 450, date_x: int = 310, date_y: int = 450) -> bool:
+    """Generate a PDF with signature and date overlay on page 6."""
     try:
         # Read the template PDF
         reader = PdfReader(template_path)
@@ -142,16 +142,29 @@ def generate_signed_pdf(template_path: str, signature_image, output_path: str,
         packet = io.BytesIO()
         can = canvas.Canvas(packet, pagesize=letter)
         
-        # Save signature image to BytesIO
+        # Save signature image temporarily and draw it
         if signature_image is not None:
-            sig_io = io.BytesIO()
-            signature_image.save(sig_io, format='PNG')
-            sig_io.seek(0)
+            # Create a temporary file for the signature image
+            temp_sig_path = "temp_signature.png"
+            signature_image.save(temp_sig_path, format='PNG')
             
             # Draw signature on canvas (page 6 is index 5)
-            # Adjust signature size as needed (width, height)
-            can.drawImage(sig_io, sig_x, sig_y, width=200, height=50, 
+            # Associate Signature box position (red box)
+            can.drawImage(temp_sig_path, sig_x, sig_y, width=120, height=40, 
                          preserveAspectRatio=True, mask='auto')
+            
+            # Clean up temp file after drawing
+            import os as os_module
+            if os_module.path.exists(temp_sig_path):
+                try:
+                    os_module.remove(temp_sig_path)
+                except:
+                    pass  # Will be cleaned up later if deletion fails
+        
+        # Add current date in the Date box (green box)
+        can.setFont("Helvetica", 10)
+        current_date = datetime.now().strftime("%m/%d/%Y")
+        can.drawString(date_x, date_y, current_date)
         
         can.save()
         packet.seek(0)
@@ -175,7 +188,10 @@ def generate_signed_pdf(template_path: str, signature_image, output_path: str,
         
         return True
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         st.error(f"PDF generation error: {str(e)}")
+        st.error(f"Details: {error_details}")
         return False
 
 def send_email_notification(record):
@@ -381,11 +397,14 @@ def page_new_enrollment():
 
     # Industry selection
     st.subheader("Industry Selection")
-    industries = st.multiselect(
-        "Select all industries that apply",
-        INDUSTRIES,
-        help="Select one or more industries"
-    )
+    st.write("Select all industries that apply:")
+    
+    industries = []
+    cols = st.columns(4)
+    for idx, industry in enumerate(INDUSTRIES):
+        with cols[idx % 4]:
+            if st.checkbox(industry, key=f"industry_{industry}"):
+                industries.append(industry)
 
     st.subheader("Expiration Dates")
     col3, col4 = st.columns(2)
@@ -396,7 +415,101 @@ def page_new_enrollment():
     
     comment = st.text_area("Additional Comments (100 characters max)", max_chars=100)
     
-    # File uploads section
+    # PDF Template download and signature section (MOVED BEFORE FILE UPLOADS)
+    st.markdown("---")
+    st.subheader("BYOV Program Agreement")
+    
+    # Determine which template to use
+    template_file = DEFAULT_TEMPLATE
+    if state:
+        # Get state abbreviation
+        state_abbrev = state[:2].upper()
+        template_file = STATE_TEMPLATE_MAP.get(state_abbrev, DEFAULT_TEMPLATE)
+    
+    st.info(f"📄 Template for your state: **{template_file}**")
+    
+    # Download template button
+    if os.path.exists(template_file):
+        with open(template_file, "rb") as f:
+            template_bytes = f.read()
+        
+        st.download_button(
+            label="📥 Download BYOV Agreement Template (Required)",
+            data=template_bytes,
+            file_name=template_file,
+            mime="application/pdf",
+            help="Download and review this document before signing below"
+        )
+        
+        # Track if user downloaded template
+        if 'template_downloaded' not in st.session_state:
+            st.session_state.template_downloaded = False
+        
+        if st.button("I have reviewed the template"):
+            st.session_state.template_downloaded = True
+            st.rerun()
+    else:
+        st.error(f"⚠ Template file '{template_file}' not found. Please contact administrator.")
+    
+    # Show acknowledgement and signature section after template review
+    signature_drawn = False
+    canvas_result_data = None
+    
+    if st.session_state.get('template_downloaded', False):
+        st.markdown("---")
+        st.subheader("Acknowledgement")
+        
+        st.markdown("""
+        **ACKNOWLEDGEMENT**
+        
+        I confirm that I have opened and fully reviewed the BYOV Policy, including the mileage 
+        reimbursement rules and current reimbursement rates. I understand that the first 35 minutes 
+        of my morning commute and the first 35 minutes of my afternoon commute are not eligible for 
+        reimbursement and must not be included when entering mileage.
+        """)
+        
+        # Checkbox to confirm acknowledgement
+        acknowledged = st.checkbox(
+            "I acknowledge and agree to the terms stated above",
+            key="acknowledgement_checkbox"
+        )
+        
+        # Show signature section only after acknowledgement is checked
+        if acknowledged:
+            st.markdown("---")
+            st.subheader("Signature")
+            
+            st.write("Please sign below:")
+            
+            # Signature canvas
+            canvas_result = st_canvas(
+                fill_color="rgba(255, 255, 255, 0)",  # Transparent
+                stroke_width=2,
+                stroke_color="#000000",  # Black stroke color
+                background_color="#FFFFFF",  # White background
+                height=200,
+                width=600,
+                drawing_mode="freedraw",
+                key="signature_canvas",
+            )
+            
+            # Check if signature is drawn
+            canvas_result_data = canvas_result
+            if canvas_result_data.image_data is not None:
+                # Check if there's any non-white pixel
+                import numpy as np
+                img_array = np.array(canvas_result_data.image_data)
+                if img_array[:, :, 3].max() > 0:  # Check alpha channel
+                    signature_drawn = True
+            
+            if signature_drawn:
+                st.success("✓ Signature captured")
+            else:
+                st.info("Please sign in the box above")
+        else:
+            st.info("Please check the acknowledgement box above to proceed with signature.")
+    
+    # File uploads section (MOVED AFTER SIGNATURE)
     st.markdown("---")
     st.subheader("Document Uploads")
     
@@ -439,86 +552,6 @@ def page_new_enrollment():
     
     if insurance_docs:
         st.success(f"✓ {len(insurance_docs)} insurance document(s) uploaded")
-    
-    # PDF Template download and signature section
-    st.markdown("---")
-    st.subheader("BYOV Program Agreement")
-    
-    # Determine which template to use
-    template_file = DEFAULT_TEMPLATE
-    if state:
-        # Get state abbreviation
-        state_abbrev = state[:2].upper()
-        template_file = STATE_TEMPLATE_MAP.get(state_abbrev, DEFAULT_TEMPLATE)
-    
-    st.info(f"📄 Template for your state: **{template_file}**")
-    
-    # Download template button
-    if os.path.exists(template_file):
-        with open(template_file, "rb") as f:
-            template_bytes = f.read()
-        
-        st.download_button(
-            label="📥 Download BYOV Agreement Template (Required)",
-            data=template_bytes,
-            file_name=template_file,
-            mime="application/pdf",
-            help="Download and review this document before signing below"
-        )
-        
-        # Track if user downloaded template
-        if 'template_downloaded' not in st.session_state:
-            st.session_state.template_downloaded = False
-        
-        if st.button("I have reviewed the template"):
-            st.session_state.template_downloaded = True
-            st.rerun()
-    else:
-        st.error(f"⚠ Template file '{template_file}' not found. Please contact administrator.")
-    
-    # Show signature section only after template review
-    if st.session_state.get('template_downloaded', False):
-        st.markdown("---")
-        st.subheader("Signature")
-        
-        st.warning(
-            "**ACKNOWLEDGEMENT:** I agree that I have opened, fully reviewed the rules and procedures "
-            "for the BYOV program & understand that my 35 Min morning & afternoon commute are not "
-            "calculated when entering mileage."
-        )
-        
-        st.write("Please sign below:")
-        
-        # Signature canvas
-        canvas_result = st_canvas(
-            fill_color="rgba(255, 255, 255, 0)",  # Transparent
-            stroke_width=2,
-            stroke_color="#000000",
-            background_color="rgba(255, 255, 255, 0)",  # Transparent background
-            height=200,
-            width=600,
-            drawing_mode="freedraw",
-            key="signature_canvas",
-        )
-        
-        # Check if signature is drawn
-        signature_drawn = False
-        canvas_result_data = canvas_result
-        if canvas_result_data.image_data is not None:
-            # Check if there's any non-white pixel
-            import numpy as np
-            img_array = np.array(canvas_result_data.image_data)
-            if img_array[:, :, 3].max() > 0:  # Check alpha channel
-                signature_drawn = True
-        
-        if signature_drawn:
-            st.success("✓ Signature captured")
-        else:
-            st.info("Please sign in the box above")
-    else:
-        # Template not downloaded yet, signature section not shown
-        signature_drawn = False
-        canvas_result_data = None
     
     # Submit button
     st.markdown("---")
@@ -591,15 +624,19 @@ def page_new_enrollment():
                 pdf_output_path = os.path.join("pdfs", pdf_filename)
                 
                 # Use session state for signature position (default values or admin-adjusted)
-                sig_x = st.session_state.get('sig_x', 72)
-                sig_y = st.session_state.get('sig_y', 360)
+                sig_x = st.session_state.get('sig_x', 90)
+                sig_y = st.session_state.get('sig_y', 450)
+                date_x = st.session_state.get('date_x', 310)
+                date_y = st.session_state.get('date_y', 450)
                 
                 pdf_success = generate_signed_pdf(
                     template_file, 
                     signature_img, 
                     pdf_output_path,
                     sig_x=sig_x,
-                    sig_y=sig_y
+                    sig_y=sig_y,
+                    date_x=date_x,
+                    date_y=date_y
                 )
                 
                 if not pdf_success:
@@ -912,13 +949,18 @@ def page_admin_settings():
     
     # Initialize session state for coordinates
     if 'sig_x' not in st.session_state:
-        st.session_state.sig_x = 72
+        st.session_state.sig_x = 90
     if 'sig_y' not in st.session_state:
-        st.session_state.sig_y = 360
+        st.session_state.sig_y = 450
+    if 'date_x' not in st.session_state:
+        st.session_state.date_x = 310
+    if 'date_y' not in st.session_state:
+        st.session_state.date_y = 450
     
     col1, col2 = st.columns(2)
     
     with col1:
+        st.write("**Signature Position:**")
         sig_x = st.slider(
             "Signature X Position (left margin)",
             min_value=0,
@@ -929,8 +971,7 @@ def page_admin_settings():
         )
         st.session_state.sig_x = sig_x
         st.write(f"X = {sig_x} points ({sig_x/72:.2f} inches from left)")
-    
-    with col2:
+        
         sig_y = st.slider(
             "Signature Y Position (from bottom)",
             min_value=0,
@@ -941,6 +982,30 @@ def page_admin_settings():
         )
         st.session_state.sig_y = sig_y
         st.write(f"Y = {sig_y} points ({sig_y/72:.2f} inches from bottom)")
+    
+    with col2:
+        st.write("**Date Position:**")
+        date_x = st.slider(
+            "Date X Position (left margin)",
+            min_value=0,
+            max_value=600,
+            value=st.session_state.date_x,
+            step=5,
+            help="Distance from left edge in points (72 points = 1 inch)"
+        )
+        st.session_state.date_x = date_x
+        st.write(f"X = {date_x} points ({date_x/72:.2f} inches from left)")
+        
+        date_y = st.slider(
+            "Date Y Position (from bottom)",
+            min_value=0,
+            max_value=800,
+            value=st.session_state.date_y,
+            step=5,
+            help="Distance from bottom edge in points (72 points = 1 inch)"
+        )
+        st.session_state.date_y = date_y
+        st.write(f"Y = {date_y} points ({date_y/72:.2f} inches from bottom)")
     
     st.markdown("---")
     
@@ -978,7 +1043,9 @@ def page_admin_settings():
                             test_sig_img,
                             test_output,
                             sig_x=sig_x,
-                            sig_y=sig_y
+                            sig_y=sig_y,
+                            date_x=date_x,
+                            date_y=date_y
                         )
                         
                         if success:
