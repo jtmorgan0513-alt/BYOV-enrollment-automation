@@ -211,8 +211,8 @@ __marimo__/
 enrollments.json
 secrets.toml
 
-# Streamlit
-/.streamlit/
+# Streamlit secrets (keep config.toml but ignore secrets.toml in .streamlit/)
+/.streamlit/secrets.toml
 
 # Local config
 .env
