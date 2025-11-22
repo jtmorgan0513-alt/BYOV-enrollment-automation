@@ -1457,7 +1457,7 @@ def render_file_gallery_modal(original_row, selected_row, tech_id):
     st.markdown("""
     <style>
     .file-gallery-modal {
-        background: white;
+        background: var(--background-color);
         border-radius: 8px;
         padding: 24px;
         margin-top: 20px;
@@ -2077,17 +2077,17 @@ def main():
         initial_sidebar_state="expanded",
     )
     
-    # Set white background for entire app
+    # Theme-aware styling
     st.markdown("""
         <style>
         .stApp {
-            background-color: white;
+            background-color: var(--background-color);
         }
         .main {
-            background-color: white;
+            background-color: var(--background-color);
         }
         [data-testid="stSidebar"] {
-            background-color: #f8f9fa;
+            background-color: var(--secondary-background-color);
         }
         /* Sears blue theme for buttons and checkboxes */
         :root, .stApp {
