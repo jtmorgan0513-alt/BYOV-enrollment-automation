@@ -5,3 +5,5 @@ Pillow
 reportlab
 streamlit-drawable-canvas
 PyPDF2
+streamlit-aggrid
+numpy

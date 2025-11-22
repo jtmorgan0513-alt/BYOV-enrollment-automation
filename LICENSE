@@ -1,0 +1,53 @@
+
+Business Source License 1.1
+
+Copyright (c) 2025 jtmorgan0513-alt
+
+Change Date: 2028-11-21
+Change License: Apache-2.0
+
+This software is licensed under the Business Source License 1.1 (BSL 1.1).
+
+1. Definitions
+	a) "Copyright Holder" means jtmorgan0513-alt (the owner of the copyright
+		 in the Software).
+	b) "Production Use" means use of the Software in a production, commercial,
+		 for-profit, or revenue-generating environment where the Software is used
+		 to provide goods, services, or tools to third parties (for example, but
+		 not limited to, running the Software as part of a hosted offering or in
+		 connection with customer-facing systems).
+
+2. Grant of Rights
+	Subject to the terms and conditions of this BSL 1.1, the Copyright Holder
+	hereby grants you a non-exclusive, non-transferable, worldwide license to
+	use, reproduce, modify, and create derivative works of the Software for any
+	purpose other than Production Use.
+
+3. Production Use
+	Production Use of the Software is NOT permitted under this license without
+	a separate commercial license granted by the Copyright Holder. If you want to
+	use the Software in Production Use, contact the Copyright Holder to obtain a
+	commercial license.
+
+4. Change Date and Automatic Re-licensing
+	On or after the Change Date specified above ("2028-11-21"), the Copyright
+	Holder will automatically and irrevocably relicense the version of the
+	Software that was governed by this BSL to the Change License specified
+	above ("Apache-2.0"), and the terms of that open-source license will apply
+	to that code going forward.
+
+5. No Warranty
+	THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+	OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+	IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+	CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+6. Miscellaneous
+	This license constitutes the entire agreement between you and the Copyright
+	Holder concerning the use of the Software and supersedes any prior or
+	contemporaneous agreements, representations, and understandings.
+
+Contact: If you wish to obtain a commercial license prior to the Change Date
+or have questions about licensing, contact: <replace-with-your-contact-email>
