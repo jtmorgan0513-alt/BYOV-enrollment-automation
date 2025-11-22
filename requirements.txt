@@ -1,10 +1,7 @@
 streamlit
+pandas
 requests
 Pillow
 reportlab
 streamlit-drawable-canvas
-fastapi
-uvicorn[standard]
-python-multipart
-python-dotenv
 PyPDF2

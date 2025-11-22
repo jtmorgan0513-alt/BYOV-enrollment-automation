@@ -1,9 +1,9 @@
-
 import json
 import os
 from datetime import date, datetime
 import io
 import re
+import shutil
 
 import pandas as pd
 import streamlit as st
@@ -22,6 +22,9 @@ from PIL import Image
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
+from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
+import zipfile
+import mimetypes
 
 
 DATA_FILE = "enrollments.json"
@@ -29,12 +32,12 @@ DATA_FILE = "enrollments.json"
 # State to template mapping
 STATE_TEMPLATE_MAP = {
     "CA": "template_2.pdf",
-    "WA": "template_2.pdf", 
-    "IL": "template_2.pdf"
+    "WA": "template_2.pdf",
+    "IL": "template_2.pdf",
 }
 DEFAULT_TEMPLATE = "template_1.pdf"
 
-# US States list
+# US States list (used in admin forms)
 US_STATES = [
     "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado",
     "Connecticut", "Delaware", "Florida", "Georgia", "Hawaii", "Idaho",
@@ -48,255 +51,366 @@ US_STATES = [
     "West Virginia", "Wisconsin", "Wyoming"
 ]
 
-# Industry options
 INDUSTRIES = ["Cook", "Dish", "Laundry", "Micro", "Ref", "HVAC", "L&G"]
 
 
-# ------------------------
-# DATA HELPERS
-# ------------------------
 def load_enrollments():
-    """Load enrollments from JSON file."""
     if not os.path.exists(DATA_FILE):
         return []
     try:
-        with open(DATA_FILE, "r") as f:
+        with open(DATA_FILE, 'r') as f:
             return json.load(f)
-    except json.JSONDecodeError:
+    except Exception:
         return []
 
 
 def save_enrollments(records):
-    """Save enrollments to JSON file."""
-    with open(DATA_FILE, "w") as f:
+    with open(DATA_FILE, 'w') as f:
         json.dump(records, f, indent=2, default=str)
 
-def delete_enrollment(record_id: str):
-    """Remove a record from enrollments.json by its id."""
-    data = load_enrollments()
-    new_data = [r for r in data if r.get("id") != record_id]
-    save_enrollments(new_data)
-    # return True if something was actually deleted
-    return len(new_data) != len(data)
+
+def delete_enrollment(tech_id: str) -> tuple[bool, str]:
+    try:
+        records = load_enrollments()
+        identifier = str(tech_id)
+        record_to_delete = None
+        for record in records:
+            if str(record.get('tech_id', '')) == identifier or str(record.get('id', '')) == identifier:
+                record_to_delete = record
+                break
+
+        if not record_to_delete:
+            return False, f"Record not found for Tech ID or ID: {tech_id}"
+
+        # collect files
+        files_to_delete = []
+        files_to_delete.append(record_to_delete.get('signature_pdf_path'))
+        files_to_delete.extend(record_to_delete.get('vehicle_photos_paths', []))
+        files_to_delete.extend(record_to_delete.get('insurance_docs_paths', []))
+        files_to_delete.extend(record_to_delete.get('registration_docs_paths', []))
+
+        deleted_files = 0
+        for p in files_to_delete:
+            if p and os.path.exists(p):
+                try:
+                    os.remove(p)
+                    deleted_files += 1
+                except Exception:
+                    pass
+
+        # delete parent upload folder if present
+        sig = record_to_delete.get('signature_pdf_path')
+        if sig:
+            upload_dir = os.path.dirname(os.path.dirname(sig))
+            if os.path.exists(upload_dir) and os.path.isdir(upload_dir):
+                try:
+                    shutil.rmtree(upload_dir)
+                except Exception:
+                    pass
+
+        records = [r for r in records if not (str(r.get('tech_id', '')) == identifier or str(r.get('id', '')) == identifier)]
+        save_enrollments(records)
+        return True, f"✅ Successfully deleted enrollment for Tech ID {tech_id} and {deleted_files} associated files."
+    except Exception as e:
+        return False, f"❌ Error deleting enrollment: {e}"
 
 
 def sanitize_filename(name: str) -> str:
-    """Sanitize a string to be safe for use in filenames."""
-    # Remove or replace special characters
     name = re.sub(r'[<>:"/\\|?*]', '_', name)
-    # Remove leading/trailing spaces and dots
     name = name.strip('. ')
-    return name if name else "unnamed"
-
-
-def get_template_for_state(state: str) -> str:
-    """Get the appropriate PDF template for a given state."""
-    # Extract state abbreviation if full name provided
-    state_abbrev = state[:2].upper() if len(state) > 2 else state.upper()
-    return STATE_TEMPLATE_MAP.get(state_abbrev, DEFAULT_TEMPLATE)
+    return name or 'unnamed'
 
 
 def create_upload_folder(tech_id: str, record_id: str) -> str:
-    """Create and return the upload folder path for a technician."""
     safe_tech_id = sanitize_filename(tech_id)
     folder_name = f"{safe_tech_id}_{record_id}"
     base_path = os.path.join("uploads", folder_name)
-    
-    # Create subfolders
     os.makedirs(os.path.join(base_path, "vehicle"), exist_ok=True)
     os.makedirs(os.path.join(base_path, "insurance"), exist_ok=True)
     os.makedirs(os.path.join(base_path, "registration"), exist_ok=True)
     os.makedirs("pdfs", exist_ok=True)
-    
     return base_path
 
 
 def save_uploaded_files(uploaded_files, folder_path: str, prefix: str) -> list:
-    """Save uploaded files and return list of paths."""
     file_paths = []
     for idx, uploaded_file in enumerate(uploaded_files, 1):
-        # Get file extension
-        file_ext = os.path.splitext(uploaded_file.name)[1]
-        # Create filename
-        filename = f"{prefix}_{idx}{file_ext}"
-        file_path = os.path.join(folder_path, filename)
-        
-        # Save file
-        with open(file_path, "wb") as f:
+        ext = os.path.splitext(uploaded_file.name)[1]
+        filename = f"{prefix}_{idx}{ext}"
+        path = os.path.join(folder_path, filename)
+        with open(path, 'wb') as f:
             f.write(uploaded_file.getbuffer())
-        
-        file_paths.append(file_path)
-    
+        file_paths.append(path)
     return file_paths
 
 
-def generate_signed_pdf(template_path: str, signature_image, output_path: str, 
+def generate_signed_pdf(template_path: str, signature_image, output_path: str,
                         sig_x: int = 90, sig_y: int = 450, date_x: int = 310, date_y: int = 450) -> bool:
-    """Generate a PDF with signature and date overlay on page 6."""
+    """Generate a PDF with signature and date overlay on page 6 (index 5).
+    Returns True on success, False on failure.
+    """
     try:
-        # Read the template PDF
         reader = PdfReader(template_path)
         writer = PdfWriter()
-        
-        # Create signature overlay
+
+        # Create signature/date overlay
         packet = io.BytesIO()
         can = canvas.Canvas(packet, pagesize=letter)
-        
-        # Save signature image temporarily and draw it
+
+        # Draw signature image if provided
         if signature_image is not None:
-            # Create a temporary file for the signature image
             temp_sig_path = "temp_signature.png"
             signature_image.save(temp_sig_path, format='PNG')
-            
-            # Draw signature on canvas (page 6 is index 5)
-            # Associate Signature box position (red box)
-            can.drawImage(temp_sig_path, sig_x, sig_y, width=120, height=40, 
-                         preserveAspectRatio=True, mask='auto')
-            
-            # Clean up temp file after drawing
-            import os as os_module
-            if os_module.path.exists(temp_sig_path):
-                try:
-                    os_module.remove(temp_sig_path)
-                except:
-                    pass  # Will be cleaned up later if deletion fails
-        
-        # Add current date in the Date box (green box)
+            can.drawImage(temp_sig_path, sig_x, sig_y, width=120, height=40,
+                          preserveAspectRatio=True, mask='auto')
+            try:
+                os.remove(temp_sig_path)
+            except Exception:
+                pass
+
+        # Draw date
         can.setFont("Helvetica", 10)
         current_date = datetime.now().strftime("%m/%d/%Y")
         can.drawString(date_x, date_y, current_date)
-        
+
         can.save()
         packet.seek(0)
-        
-        # Read the overlay
+
         overlay_pdf = PdfReader(packet)
-        
-        # Merge pages
-        for page_num in range(len(reader.pages)):
-            page = reader.pages[page_num]
-            
-            # Add signature overlay to page 6 (index 5)
-            if page_num == 5 and len(overlay_pdf.pages) > 0:
+
+        # Merge overlay onto each page, but ensure page 6 (index 5) receives the overlay
+        for i in range(len(reader.pages)):
+            page = reader.pages[i]
+            if i == 5 and len(overlay_pdf.pages) > 0:
                 page.merge_page(overlay_pdf.pages[0])
-            
             writer.add_page(page)
-        
-        # Write output
-        with open(output_path, "wb") as output_file:
-            writer.write(output_file)
-        
+
+        with open(output_path, "wb") as f:
+            writer.write(f)
+
         return True
     except Exception as e:
         import traceback
         error_details = traceback.format_exc()
-        st.error(f"PDF generation error: {str(e)}")
-        st.error(f"Details: {error_details}")
+        try:
+            st.error(f"PDF generation error: {str(e)}")
+            st.error(f"Details: {error_details}")
+        except Exception:
+            pass
         return False
 
+
+def show_money_rain(count: int = 30, duration_ms: int = 5000):
+    """Render a falling money (dollar) animation using HTML/CSS/JS.
+
+    This replaces Streamlit's `st.balloons()` with a lightweight client-side
+    animation so users see dollar emojis drifting down when a submission
+    completes.
+    """
+    # Build bill divs with slight randomization for left position and delay
+    bills = []
+    for i in range(count):
+        left = (i * 73) % 100  # spread across width
+        delay = (i % 7) * 0.15
+        dur = 3 + (i % 5) * 0.4
+        rotate = (i * 37) % 360
+        scale = 0.8 + (i % 3) * 0.15
+        bills.append(
+            f'<div class="bill" style="left:{left}%; animation-delay:{delay}s; animation-duration:{dur}s; transform: rotate({rotate}deg) scale({scale});">💵</div>'
+        )
+
+    html = f"""
+    <style>
+    .money-rain-wrapper {{
+        pointer-events: none;
+        position: fixed;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        z-index: 99999;
+    }}
+    .money-rain-wrapper .bill {{
+        position: absolute;
+        top: -10%;
+        font-size: 28px;
+        will-change: transform, opacity;
+        opacity: 0.95;
+        text-shadow: 0 1px 0 rgba(0,0,0,0.12);
+        filter: drop-shadow(0 4px 8px rgba(0,0,0,0.12));
+        animation-name: fallAndRotate;
+        animation-timing-function: linear;
+        animation-iteration-count: 1;
+    }}
+
+    @keyframes fallAndRotate {{
+        0% {{ transform: translateY(-10vh) rotate(0deg); opacity: 1; }}
+        70% {{ opacity: 1; }}
+        100% {{ transform: translateY(110vh) rotate(360deg); opacity: 0; }}
+    }}
+    </style>
+
+    <div class="money-rain-wrapper" id="money-rain-wrapper">
+        {''.join(bills)}
+    </div>
+    <script>
+    // Remove the animation container after a short delay so it doesn't persist
+    setTimeout(function() {{
+        var el = document.getElementById('money-rain-wrapper');
+        if (el) {{
+            el.style.transition = 'opacity 600ms ease-out';
+            el.style.opacity = '0';
+            setTimeout(function() {{ el.remove(); }}, 700);
+        }}
+    }}, {duration_ms});
+    </script>
+    """
+    st.markdown(html, unsafe_allow_html=True)
+
 def send_email_notification(record):
-    email_config = st.secrets["email"]
+    # Read email config from Streamlit secrets
+    email_config = st.secrets.get("email", {})
 
-    sender = email_config["sender"]
-    app_password = email_config["app_password"]
-    recipient = email_config["recipient"]
+    sender = email_config.get("sender")
+    app_password = email_config.get("app_password")
+    recipient = email_config.get("recipient")
 
-    subject = f"New BYOV Enrollment: {record['full_name']} (Tech {record['tech_id']})"
-    
+    subject = f"New BYOV Enrollment: {record.get('full_name','Unknown')} (Tech {record.get('tech_id','N/A')})"
+
     # Build email body with all collected information
     industries_str = ", ".join(record.get('industries', [])) if record.get('industries') else "None"
-    
+
+    # Format submission date
+    submission_date = record.get('submission_date', '')
+    if submission_date:
+        try:
+            dt = datetime.fromisoformat(submission_date)
+            submission_date = dt.strftime("%m/%d/%Y")
+        except Exception:
+            pass
+
     body = f"""
 A new BYOV enrollment has been submitted.
 
-Technician: {record['full_name']}
-Tech ID: {record['tech_id']}
-District: {record['district']}
-State: {record.get('state', 'N/A')}
-Industries: {industries_str}
+TECHNICIAN INFORMATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Name:           {record.get('full_name','')}
+Tech ID:        {record.get('tech_id','')}
+District:       {record.get('district','')}
+State:          {record.get('state', 'N/A')}
+Industries:     {industries_str}
 
-Vehicle:
-Year: {record['year']}
-Make: {record['make']}
-Model: {record['model']}
-VIN: {record['vin']}
+VEHICLE INFORMATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Year:           {record.get('year','')}
+Make:           {record.get('make','')}
+Model:          {record.get('model','')}
+VIN:            {record.get('vin','')}
 
-Insurance Exp: {record['insurance_exp']}
-Registration Exp: {record['registration_exp']}
+DOCUMENTATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Insurance Exp:  {record.get('insurance_exp','')}
+Registration Exp: {record.get('registration_exp','')}
+Template Used:  {record.get('template_used', 'N/A')}
 
-Template Used: {record.get('template_used', 'N/A')}
-Vehicle Photos: {len(record.get('vehicle_photos_paths', []))}
-Insurance Documents: {len(record.get('insurance_docs_paths', []))}
-Registration Documents: {len(record.get('registration_docs_paths', []))}
+FILES UPLOADED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Vehicle Photos:       {len(record.get('vehicle_photos_paths', [])) if record.get('vehicle_photos_paths') else 0} files
+Insurance Documents:  {len(record.get('insurance_docs_paths', [])) if record.get('insurance_docs_paths') else 0} files
+Registration Documents: {len(record.get('registration_docs_paths', [])) if record.get('registration_docs_paths') else 0} files
 
-Comments: {record['comment']}
+ADDITIONAL NOTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{record.get('comment', 'None')}
 
-This is an automated notification from the BYOV app.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Submitted: {submission_date}
+
+Files are attached to this email when feasible. If the files are too large,
+they are available via the BYOV Admin Dashboard.
+
+This is an automated notification from the BYOV Enrollment System.
 """
 
     msg = MIMEMultipart()
-    msg["From"] = sender
-    msg["To"] = recipient
+    msg["From"] = sender or "no-reply@example.com"
+    msg["To"] = recipient or ""
     msg["Date"] = formatdate(localtime=True)
     msg["Subject"] = subject
     msg.attach(MIMEText(body, "plain"))
 
-    # Attach signed PDF
-    try:
-        if record.get('signature_pdf_path') and os.path.exists(record['signature_pdf_path']):
-            with open(record['signature_pdf_path'], "rb") as f:
-                pdf_name = f"BYOV_Enrollment_{record['tech_id']}_{record['full_name']}.pdf"
-                pdf_attach = MIMEApplication(f.read(), _subtype="pdf")
-                pdf_attach.add_header('Content-Disposition', 'attachment', filename=pdf_name)
-                msg.attach(pdf_attach)
-    except Exception as e:
-        st.warning(f"Could not attach signed PDF: {str(e)}")
+    # Collect file paths referenced in the record
+    file_keys = [
+        'signature_pdf_path',
+        'vehicle_photos_paths',
+        'insurance_docs_paths',
+        'registration_docs_paths'
+    ]
+    files = []
+    for k in file_keys:
+        v = record.get(k)
+        if not v:
+            continue
+        if isinstance(v, list):
+            for p in v:
+                if p and os.path.exists(p):
+                    files.append(p)
+        else:
+            if isinstance(v, str) and os.path.exists(v):
+                files.append(v)
 
-    # Attach vehicle photos
+    # If no files, send simple notification
     try:
-        for idx, photo_path in enumerate(record.get('vehicle_photos_paths', []), 1):
-            if os.path.exists(photo_path):
-                with open(photo_path, "rb") as f:
-                    file_ext = os.path.splitext(photo_path)[1]
-                    if file_ext.lower() in ['.jpg', '.jpeg', '.png']:
-                        img_attach = MIMEImage(f.read())
-                        img_attach.add_header('Content-Disposition', 'attachment', 
-                                            filename=f"{record['tech_id']}_vehicle_{idx}{file_ext}")
-                    else:
-                        img_attach = MIMEApplication(f.read())
-                        img_attach.add_header('Content-Disposition', 'attachment',
-                                            filename=f"{record['tech_id']}_vehicle_{idx}{file_ext}")
-                    msg.attach(img_attach)
-    except Exception as e:
-        st.warning(f"Could not attach vehicle photos: {str(e)}")
+        MAX_ATTACHMENT_SIZE = 20 * 1024 * 1024  # 20 MB
 
-    # Attach insurance documents
-    try:
-        for idx, doc_path in enumerate(record.get('insurance_docs_paths', []), 1):
-            if os.path.exists(doc_path):
-                with open(doc_path, "rb") as f:
-                    file_ext = os.path.splitext(doc_path)[1]
-                    doc_attach = MIMEApplication(f.read())
-                    doc_attach.add_header('Content-Disposition', 'attachment',
-                                        filename=f"{record['tech_id']}_insurance_{idx}{file_ext}")
-                    msg.attach(doc_attach)
-    except Exception as e:
-        st.warning(f"Could not attach insurance documents: {str(e)}")
+        total_size = sum(os.path.getsize(p) for p in files) if files else 0
 
-    # Attach registration documents
-    try:
-        for idx, doc_path in enumerate(record.get('registration_docs_paths', []), 1):
-            if os.path.exists(doc_path):
-                with open(doc_path, "rb") as f:
-                    file_ext = os.path.splitext(doc_path)[1]
-                    doc_attach = MIMEApplication(f.read())
-                    doc_attach.add_header('Content-Disposition', 'attachment',
-                                        filename=f"{record['tech_id']}_registration_{idx}{file_ext}")
-                    msg.attach(doc_attach)
-    except Exception as e:
-        st.warning(f"Could not attach registration documents: {str(e)}")
+        # If total size is larger than threshold, attempt to zip attachments
+        if files and total_size > MAX_ATTACHMENT_SIZE:
+            # Create an in-memory ZIP archive
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+                for p in files:
+                    arcname = os.path.basename(p)
+                    try:
+                        zf.write(p, arcname=arcname)
+                    except Exception:
+                        # skip files that can't be read
+                        pass
+            zip_buffer.seek(0)
+            zipped_size = len(zip_buffer.getvalue())
+            if zipped_size <= MAX_ATTACHMENT_SIZE:
+                part = MIMEApplication(zip_buffer.read())
+                part.add_header('Content-Disposition', 'attachment', filename='enrollment_files.zip')
+                msg.attach(part)
+            else:
+                # Attachments too large even when zipped; include file list and do not attach
+                summary = '\n'.join([f"- {os.path.basename(p)} ({os.path.getsize(p)/(1024*1024):.1f} MB)" for p in files])
+                extra = "\n\nFiles are too large to include in this email. Files are stored in the BYOV Admin Dashboard:\n" + summary
+                # append to message text
+                msg.attach(MIMEText(extra, 'plain'))
+        else:
+            # Attach individual files
+            for p in files:
+                try:
+                    ctype, encoding = mimetypes.guess_type(p)
+                    if ctype is None:
+                        ctype = 'application/octet-stream'
+                    maintype, subtype = ctype.split('/', 1)
+                    with open(p, 'rb') as fp:
+                        part = MIMEApplication(fp.read(), _subtype=subtype)
+                        part.add_header('Content-Disposition', 'attachment', filename=os.path.basename(p))
+                        msg.attach(part)
+                except Exception:
+                    # skip attachments we can't read
+                    continue
 
-    try:
+        # Send email
+        if not sender or not app_password or not recipient:
+            st.warning("Email credentials or recipient not fully configured in secrets; skipping email send.")
+            return False
+
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(sender, app_password)
             server.sendmail(sender, recipient, msg.as_string())
@@ -340,9 +454,655 @@ def decode_vin(vin: str):
 
 
 # ------------------------
+# WIZARD STEP FUNCTIONS
+# ------------------------
+def wizard_step_1():
+    """Step 1: Technician Info & Industry Selection"""
+    st.subheader("Technician Information")
+    
+    # Initialize wizard_data in session state if not exists
+    if 'wizard_data' not in st.session_state:
+        st.session_state.wizard_data = {}
+    
+    data = st.session_state.wizard_data
+    
+    # Technician fields
+    full_name = st.text_input(
+        "Full Name", 
+        value=data.get('full_name', ''),
+        key="wiz_full_name"
+    )
+    
+    tech_id = st.text_input(
+        "Tech ID", 
+        value=data.get('tech_id', ''),
+        key="wiz_tech_id"
+    )
+    
+    district = st.text_input(
+        "District", 
+        value=data.get('district', ''),
+        key="wiz_district"
+    )
+    
+    state_idx = 0
+    saved_state = data.get('state')
+    if saved_state and saved_state in US_STATES:
+        state_idx = US_STATES.index(saved_state) + 1
+    state = st.selectbox(
+        "State", 
+        [""] + US_STATES,
+        index=state_idx,
+        key="wiz_state"
+    )
+    
+    # Industry selection
+    st.subheader("Industry Selection")
+    st.write("Select all industries that apply:")
+    
+    saved_industries = data.get('industries', [])
+    selected_industries = []
+    
+    cols = st.columns(4)
+    for idx, industry in enumerate(INDUSTRIES):
+        with cols[idx % 4]:
+            checked = st.checkbox(
+                industry, 
+                value=industry in saved_industries,
+                key=f"wiz_industry_{industry}"
+            )
+            if checked:
+                selected_industries.append(industry)
+    
+    # Navigation
+    st.markdown("---")
+    
+    # Validation
+    errors = []
+    if not full_name:
+        errors.append("Full Name is required")
+    if not tech_id:
+        errors.append("Tech ID is required")
+    if not district:
+        errors.append("District is required")
+    if not state:
+        errors.append("State selection is required")
+    
+    if errors:
+        st.warning("Please complete the following:\n" + "\n".join(f"• {msg}" for msg in errors))
+    
+    if st.button("Next ➡", disabled=bool(errors), type="primary", use_container_width=True):
+        # Save to session state
+        st.session_state.wizard_data.update({
+            'full_name': full_name,
+            'tech_id': tech_id,
+            'district': district,
+            'state': state,
+            'industries': selected_industries
+        })
+        st.session_state.wizard_step = 2
+        st.rerun()
+
+
+def wizard_step_2():
+    """Step 2: Vehicle Info & Documents"""
+    st.subheader("Vehicle Information & Documents")
+    
+    data = st.session_state.wizard_data
+    
+    # VIN Section
+    st.markdown("### Vehicle Identification")
+    
+    vin = st.text_input(
+        "VIN (Vehicle Identification Number)", 
+        value=data.get('vin', ''),
+        key="wiz_vin"
+    )
+    
+    decode_clicked = st.button("Decode VIN (lookup year/make/model)")
+    
+    if decode_clicked:
+        vin_value = st.session_state.get("wiz_vin", "").strip()
+        if not vin_value:
+            st.warning("Enter a VIN above before decoding.")
+        else:
+            with st.spinner("Decoding VIN..."):
+                decoded = decode_vin(vin_value)
+                if decoded:
+                    st.session_state.wizard_data['year'] = decoded.get("year", "")
+                    st.session_state.wizard_data['make'] = decoded.get("make", "")
+                    st.session_state.wizard_data['model'] = decoded.get("model", "")
+                    st.success(
+                        f"Decoded VIN: {decoded.get('year', '?')} "
+                        f"{decoded.get('make', '?')} "
+                        f"{decoded.get('model', '?')}"
+                    )
+                    st.rerun()
+                else:
+                    st.error("Could not decode VIN from the NHTSA API. Check the VIN and try again.")
+    
+        # Sync decoded values to session state keys if they exist
+    if 'year' in data and 'wiz_year' not in st.session_state:
+        st.session_state.wiz_year = data['year']
+    if 'make' in data and 'wiz_make' not in st.session_state:
+        st.session_state.wiz_make = data['make']
+    if 'model' in data and 'wiz_model' not in st.session_state:
+        st.session_state.wiz_model = data['model']
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        year = st.text_input(
+            "Vehicle Year", 
+            key="wiz_year"
+        )
+    with col2:
+        make = st.text_input(
+            "Vehicle Make", 
+            key="wiz_make"
+        )
+    with col3:
+        model = st.text_input(
+            "Vehicle Model", 
+            key="wiz_model"
+        )
+    
+    st.markdown("---")
+    
+    # Vehicle Photos
+    st.markdown("### Vehicle Photos")
+    st.caption("Upload 4 photos minimum: Front, Back, Left Side, Right Side")
+    
+    vehicle_photos = st.file_uploader(
+        "Vehicle Photos",
+        accept_multiple_files=True,
+        type=["jpg", "jpeg", "png", "pdf"],
+        key="wiz_vehicle_photos",
+        label_visibility="collapsed"
+    )
+    
+    if vehicle_photos:
+        if len(vehicle_photos) >= 4:
+            st.success(f"✓ {len(vehicle_photos)} vehicle photos uploaded")
+        else:
+            st.warning(f"⚠ {len(vehicle_photos)} uploaded - need at least 4 vehicle photos")
+    else:
+        st.warning("⚠ No vehicle photos uploaded yet")
+    
+    st.markdown("---")
+    
+    # Registration
+    st.markdown("### Registration")
+    col1, col2 = st.columns(2)
+    with col1:
+        registration_exp_default = data.get('registration_exp', date.today())
+        if isinstance(registration_exp_default, str):
+            registration_exp_default = datetime.strptime(registration_exp_default, "%Y-%m-%d").date()
+        registration_exp = st.date_input(
+            "Registration Expiration Date",
+            value=registration_exp_default,
+            key="wiz_registration_exp"
+        )
+    
+    with col2:
+        registration_docs = st.file_uploader(
+            "Registration Photo/Document",
+            accept_multiple_files=True,
+            type=["jpg", "jpeg", "png", "pdf"],
+            key="wiz_registration_docs"
+        )
+        
+        if registration_docs:
+            st.success(f"✓ {len(registration_docs)} document(s) uploaded")
+    
+    st.markdown("---")
+    
+    # Insurance
+    st.markdown("### Insurance")
+    col1, col2 = st.columns(2)
+    with col1:
+        insurance_exp_default = data.get('insurance_exp', date.today())
+        if isinstance(insurance_exp_default, str):
+            insurance_exp_default = datetime.strptime(insurance_exp_default, "%Y-%m-%d").date()
+        insurance_exp = st.date_input(
+            "Insurance Expiration Date",
+            value=insurance_exp_default,
+            key="wiz_insurance_exp"
+        )
+    
+    with col2:
+        insurance_docs = st.file_uploader(
+            "Insurance Photo/Document",
+            accept_multiple_files=True,
+            type=["jpg", "jpeg", "png", "pdf"],
+            key="wiz_insurance_docs"
+        )
+        
+        if insurance_docs:
+            st.success(f"✓ {len(insurance_docs)} document(s) uploaded")
+    
+    # Navigation
+    st.markdown("---")
+    
+    # Validation
+    errors = []
+    if not vin:
+        errors.append("VIN is required")
+    if not year or not make or not model:
+        errors.append("Vehicle Year, Make, and Model are required")
+    if not vehicle_photos or len(vehicle_photos) < 4:
+        errors.append("At least 4 vehicle photos are required")
+    if not registration_docs:
+        errors.append("Registration document is required")
+    if not insurance_docs:
+        errors.append("Insurance document is required")
+    
+    can_proceed = len(errors) == 0
+    
+    if errors:
+        st.warning("Please complete the following:\n" + "\n".join(f"• {msg}" for msg in errors))
+    
+    col_nav1, col_nav2 = st.columns([1, 1])
+    with col_nav1:
+        if st.button("⬅ Back", use_container_width=True):
+            st.session_state.wizard_step = 1
+            st.rerun()
+    
+    with col_nav2:
+        if st.button("Next ➡", disabled=not can_proceed, type="primary", use_container_width=True):
+            # Save to session state
+            st.session_state.wizard_data.update({
+                'vin': vin,
+                'year': year,
+                'make': make,
+                'model': model,
+                'vehicle_photos': vehicle_photos,
+                'registration_exp': registration_exp,
+                'registration_docs': registration_docs,
+                'insurance_exp': insurance_exp,
+                'insurance_docs': insurance_docs
+            })
+            st.session_state.wizard_step = 3
+            st.rerun()
+
+
+def wizard_step_3():
+    """Step 3: BYOV Policy & Signature"""
+    st.subheader("BYOV Policy Agreement")
+    
+    data = st.session_state.wizard_data
+    
+    # Determine template based on state
+    state = data.get('state', '')
+    state_abbrev = state[:2].upper() if len(state) > 2 else state.upper()
+    template_file = STATE_TEMPLATE_MAP.get(state_abbrev, DEFAULT_TEMPLATE)
+    
+    st.info(f"📄 BYOV Policy for {state}")
+    
+    # PDF Download Section
+    if os.path.exists(template_file):
+        with open(template_file, "rb") as f:
+            template_bytes = f.read()
+        
+        st.download_button(
+            label="📥 Download BYOV Policy (Required)",
+            data=template_bytes,
+            file_name="BYOV_Policy.pdf",
+            mime="application/pdf",
+            help="Download and review this document before signing below",
+            use_container_width=True
+        )
+    else:
+        st.error(f"⚠ Template file '{template_file}' not found. Please contact administrator.")
+        st.stop()
+    
+    st.markdown("---")
+    
+    # Policy Acknowledgement
+    st.markdown("### Policy Acknowledgement")
+    
+    st.markdown("""
+    I confirm that I have opened and fully reviewed the BYOV Policy, including the mileage 
+    reimbursement rules and current reimbursement rates. I understand that the first 35 minutes 
+    of my morning commute and the first 35 minutes of my afternoon commute are not eligible for 
+    reimbursement and must not be included when entering mileage.
+    """)
+    
+    acknowledged = st.checkbox(
+        "I acknowledge and agree to the terms stated above",
+        value=data.get('acknowledged', False),
+        key="wiz_acknowledged"
+    )
+    
+    # Signature section (only show if acknowledged)
+    signature_drawn = False
+    canvas_result_data = None
+    
+    if acknowledged:
+        st.markdown("---")
+        st.markdown("### Signature")
+        
+        st.write("Please sign below:")
+        
+        # Signature canvas
+        canvas_result = st_canvas(
+            fill_color="rgba(255, 255, 255, 0)",
+            stroke_width=2,
+            stroke_color="#000000",
+            background_color="#FFFFFF",
+            height=200,
+            width=600,
+            drawing_mode="freedraw",
+            key="wiz_signature_canvas",
+        )
+        
+        canvas_result_data = canvas_result
+        
+        # Check if signature is drawn
+        if canvas_result_data and canvas_result_data.image_data is not None:
+            import numpy as np
+            img_array = np.array(canvas_result_data.image_data)
+            if img_array[:, :, 3].max() > 0:
+                signature_drawn = True
+                st.success("✓ Signature captured")
+            else:
+                st.info("Please sign in the box above")
+    else:
+        st.info("Please check the acknowledgement box above to reveal the signature box.")
+    
+    # Additional Comments
+    st.markdown("---")
+    comment = st.text_area(
+        "Additional Comments (100 characters max)",
+        value=data.get('comment', ''),
+        max_chars=100,
+        key="wiz_comment"
+    )
+    
+    # Navigation
+    st.markdown("---")
+    
+    # Validation
+    can_proceed = acknowledged and signature_drawn
+    
+    if not can_proceed:
+        errors = []
+        if not acknowledged:
+            errors.append("Please acknowledge the policy terms")
+        if not signature_drawn:
+            errors.append("Please provide your signature")
+        
+        st.warning("Please complete the following:\n" + "\n".join(f"• {msg}" for msg in errors))
+    
+    col_nav1, col_nav2 = st.columns([1, 1])
+    with col_nav1:
+        if st.button("⬅ Back", use_container_width=True):
+            st.session_state.wizard_step = 2
+            st.rerun()
+    
+    with col_nav2:
+        if st.button("Next ➡", disabled=not can_proceed, type="primary", use_container_width=True):
+            # Save signature and other data to session state
+            st.session_state.wizard_data.update({
+                'acknowledged': acknowledged,
+                'template_file': template_file,
+                'comment': comment
+            })
+            
+            if canvas_result_data and canvas_result_data.image_data is not None:
+                st.session_state.wizard_data['signature_image'] = canvas_result_data.image_data
+            
+            st.session_state.wizard_step = 4
+            st.rerun()
+
+
+def wizard_step_4():
+    """Step 4: Review & Submit"""
+    st.subheader("Review Your Enrollment")
+    
+    data = st.session_state.wizard_data
+    
+    st.write("Please review all information before submitting. Use the Back button if you need to make changes.")
+    
+    # Technician Info
+    st.markdown("---")
+    with st.container():
+        st.markdown("#### 👤 Technician Information")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write(f"**Full Name:** {data.get('full_name', 'N/A')}")
+            st.write(f"**Tech ID:** {data.get('tech_id', 'N/A')}")
+        with col2:
+            st.write(f"**District:** {data.get('district', 'N/A')}")
+            st.write(f"**State:** {data.get('state', 'N/A')}")
+    
+    # Industries
+    st.markdown("---")
+    with st.container():
+        st.markdown("#### 🏭 Industries Selected")
+        industries = data.get('industries', [])
+        if industries:
+            st.write(", ".join(industries))
+        else:
+            st.write("None selected")
+    
+    # Vehicle Info
+    st.markdown("---")
+    with st.container():
+        st.markdown("#### 🚗 Vehicle Information")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write(f"**VIN:** {data.get('vin', 'N/A')}")
+            st.write(f"**Year:** {data.get('year', 'N/A')}")
+        with col2:
+            st.write(f"**Make:** {data.get('make', 'N/A')}")
+            st.write(f"**Model:** {data.get('model', 'N/A')}")
+    
+    # Documents
+    st.markdown("---")
+    with st.container():
+        st.markdown("#### 📎 Documents Uploaded")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            vehicle_count = len(data.get('vehicle_photos', []))
+            st.success(f"✓ {vehicle_count} Vehicle Photos")
+        with col2:
+            insurance_count = len(data.get('insurance_docs', []))
+            st.success(f"✓ {insurance_count} Insurance Doc(s)")
+        with col3:
+            registration_count = len(data.get('registration_docs', []))
+            st.success(f"✓ {registration_count} Registration Doc(s)")
+    
+    # Expiration Dates
+    st.markdown("---")
+    with st.container():
+        st.markdown("#### 📅 Expiration Dates")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write(f"**Insurance Expires:** {data.get('insurance_exp', 'N/A')}")
+        with col2:
+            st.write(f"**Registration Expires:** {data.get('registration_exp', 'N/A')}")
+    
+    # Policy Status
+    st.markdown("---")
+    with st.container():
+        st.markdown("#### 📝 BYOV Policy")
+        if data.get('acknowledged'):
+            st.success("✓ Policy Acknowledged")
+        if data.get('signature_image') is not None:
+            st.success("✓ Signature Provided")
+    
+    # Comments
+    if data.get('comment'):
+        st.markdown("---")
+        with st.container():
+            st.markdown("#### 💬 Additional Comments")
+            st.write(data.get('comment'))
+    
+    # Navigation & Submit
+    st.markdown("---")
+    
+    col_nav1, col_nav2 = st.columns([1, 1])
+    with col_nav1:
+        if st.button("⬅ Go Back", use_container_width=True):
+            st.session_state.wizard_step = 3
+            st.rerun()
+    
+    with col_nav2:
+        submit_clicked = st.button("✅ Submit Enrollment", type="primary", use_container_width=True)
+    
+    if submit_clicked:
+        with st.spinner("Processing enrollment..."):
+            try:
+                # Generate unique ID
+                record_id = str(uuid.uuid4())
+                
+                # Create upload folders
+                upload_base = create_upload_folder(data['tech_id'], record_id)
+                
+                # Save vehicle photos
+                vehicle_folder = os.path.join(upload_base, "vehicle")
+                vehicle_paths = save_uploaded_files(data['vehicle_photos'], vehicle_folder, "vehicle")
+                
+                # Save insurance documents
+                insurance_folder = os.path.join(upload_base, "insurance")
+                insurance_paths = save_uploaded_files(data['insurance_docs'], insurance_folder, "insurance")
+                
+                # Save registration documents
+                registration_folder = os.path.join(upload_base, "registration")
+                registration_paths = save_uploaded_files(data['registration_docs'], registration_folder, "registration")
+                
+                # Generate signed PDF
+                signature_img = None
+                if data.get('signature_image') is not None:
+                    signature_img = Image.fromarray(data['signature_image'].astype('uint8'), 'RGBA')
+                
+                pdf_filename = f"{sanitize_filename(data['tech_id'])}_{record_id}.pdf"
+                pdf_output_path = os.path.join("pdfs", pdf_filename)
+                
+                # Use EXACT signature positions - 6.25 inches from bottom
+                sig_x = 90
+                sig_y = 450
+                date_x = 310
+                date_y = 450
+                
+                pdf_success = generate_signed_pdf(
+                    data['template_file'],
+                    signature_img,
+                    pdf_output_path,
+                    sig_x=sig_x,
+                    sig_y=sig_y,
+                    date_x=date_x,
+                    date_y=date_y
+                )
+                
+                if not pdf_success:
+                    st.error("❌ PDF generation failed. Cannot submit enrollment. Please try again.")
+                    return
+                
+                # Create enrollment record
+                records = load_enrollments()
+                record = {
+                    "id": record_id,
+                    "tech_id": data['tech_id'],
+                    "full_name": data['full_name'],
+                    "district": data['district'],
+                    "state": data['state'],
+                    "industries": data.get('industries', []),
+                    "vin": data['vin'],
+                    "year": data['year'],
+                    "make": data['make'],
+                    "model": data['model'],
+                    "insurance_exp": str(data['insurance_exp']),
+                    "registration_exp": str(data['registration_exp']),
+                    "status": "Active",
+                    "comment": data.get('comment', ''),
+                    "template_used": data['template_file'],
+                    "signature_pdf_path": pdf_output_path,
+                    "vehicle_photos_paths": vehicle_paths,
+                    "insurance_docs_paths": insurance_paths,
+                    "registration_docs_paths": registration_paths,
+                    "submission_date": datetime.now().isoformat()
+                }
+                records.append(record)
+                save_enrollments(records)
+                
+                # Send email notification
+                email_sent = send_email_notification(record)
+                
+                if email_sent:
+                    st.success("✅ Enrollment submitted successfully and email notification sent!")
+                else:
+                    st.warning("✅ Enrollment saved, but email notification failed. Administrator has been notified.")
+                
+                # Clear wizard data
+                st.session_state.wizard_data = {}
+                st.session_state.wizard_step = 1
+                
+                show_money_rain()
+                
+                # Show success message
+                st.markdown("---")
+                st.success("🎉 Your BYOV enrollment has been submitted successfully!")
+                
+                if st.button("Submit Another Enrollment"):
+                    st.rerun()
+                
+            except Exception as e:
+                import traceback
+                st.error(f"❌ Error processing enrollment: {str(e)}")
+                st.error(f"Details: {traceback.format_exc()}")
+
+
+# ------------------------
 # NEW ENROLLMENT PAGE
 # ------------------------
 def page_new_enrollment():
+    """Main enrollment page with wizard navigation"""
+    
+    # Initialize wizard step if not exists
+    if 'wizard_step' not in st.session_state:
+        st.session_state.wizard_step = 1
+    
+    # Progress indicator
+    current_step = st.session_state.wizard_step
+    
+    # Progress bar
+    progress_cols = st.columns(4)
+    step_labels = [
+        "Technician Info",
+        "Vehicle & Docs",
+        "Policy & Signature",
+        "Review & Submit"
+    ]
+    
+    for idx, (col, label) in enumerate(zip(progress_cols, step_labels), 1):
+        with col:
+            if idx < current_step:
+                st.markdown(f"<div style='text-align: center; color: #28a745;'>✓ {label}</div>", unsafe_allow_html=True)
+            elif idx == current_step:
+                st.markdown(f"<div style='text-align: center; color: #007bff; font-weight: bold;'>● {label}</div>", unsafe_allow_html=True)
+            else:
+                st.markdown(f"<div style='text-align: center; color: #6c757d;'>○ {label}</div>", unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # Render appropriate step
+    if current_step == 1:
+        wizard_step_1()
+    elif current_step == 2:
+        wizard_step_2()
+    elif current_step == 3:
+        wizard_step_3()
+    elif current_step == 4:
+        wizard_step_4()
+    else:
+        st.error("Invalid wizard step")
+        st.session_state.wizard_step = 1
+        st.rerun()
+
+
+# OLD PAGE - REMOVE EVERYTHING BELOW UNTIL ADMIN DASHBOARD
+def page_new_enrollment_OLD():
     st.title("BYOV Vehicle Enrollment")
     st.caption("Submit your vehicle information for the Bring Your Own Vehicle program.")
 
@@ -681,11 +1441,260 @@ def page_new_enrollment():
                 # Clear session state
                 st.session_state.template_downloaded = False
                 
-                st.balloons()
+                show_money_rain()
                 
             except Exception as e:
                 st.error(f"❌ Error processing enrollment: {str(e)}")
                 st.exception(e)
+
+# ------------------------
+# FILE GALLERY MODAL
+# ------------------------
+def render_file_gallery_modal(original_row, selected_row, tech_id):
+    """Render a modal-style file gallery with grid layout matching the screenshot"""
+    
+    # Modal styling CSS
+    st.markdown("""
+    <style>
+    .file-gallery-modal {
+        background: white;
+        border-radius: 8px;
+        padding: 24px;
+        margin-top: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .file-gallery-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid #e0e0e0;
+    }
+    .file-gallery-title {
+        font-size: 20px;
+        font-weight: 600;
+        color: #1a1a1a;
+    }
+    .file-section {
+        margin-bottom: 32px;
+    }
+    .file-section-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #666;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 16px;
+    }
+    .file-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+        margin-bottom: 16px;
+    }
+    .file-card {
+        background: #fafafa;
+        border: 1px solid #e8e8e8;
+        border-radius: 6px;
+        padding: 12px;
+        transition: all 0.2s ease;
+        cursor: pointer;
+        position: relative;
+    }
+    .file-card:hover {
+        background: #f5f5f5;
+        border-color: #d0d0d0;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        transform: translateY(-1px);
+    }
+    .file-thumbnail {
+        width: 100%;
+        height: 120px;
+        object-fit: cover;
+        border-radius: 4px;
+        margin-bottom: 8px;
+        background: #e0e0e0;
+    }
+    .file-pdf-icon {
+        width: 100%;
+        height: 120px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 4px;
+        margin-bottom: 8px;
+        font-size: 48px;
+        color: white;
+    }
+    .file-info {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .file-name {
+        font-size: 13px;
+        font-weight: 500;
+        color: #1a1a1a;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .file-meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .file-size {
+        font-size: 12px;
+        color: #666;
+    }
+    .file-tag {
+        background: #e3f2fd;
+        color: #1976d2;
+        font-size: 11px;
+        font-weight: 500;
+        padding: 2px 8px;
+        border-radius: 12px;
+    }
+    .action-buttons {
+        display: flex;
+        gap: 12px;
+        margin-top: 24px;
+        padding-top: 24px;
+        border-top: 1px solid #e0e0e0;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Modal container with close button
+    col_header1, col_header2 = st.columns([4, 1])
+    with col_header1:
+        st.markdown(f"""
+        <div class="file-gallery-modal">
+            <div class="file-gallery-header">
+                <div class="file-gallery-title">Files for {selected_row.get('Name', 'Unknown')}</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    with col_header2:
+        if st.button("✖ Close", key="close_modal_top", use_container_width=True):
+            if 'show_file_modal' in st.session_state:
+                del st.session_state.show_file_modal
+            st.rerun()
+    
+    # Collect all files with metadata
+    def get_file_size(path):
+        try:
+            size_bytes = os.path.getsize(path)
+            if size_bytes < 1024:
+                return f"{size_bytes} B"
+            elif size_bytes < 1024 * 1024:
+                return f"{size_bytes / 1024:.1f} KB"
+            else:
+                return f"{size_bytes / (1024 * 1024):.1f} MB"
+        except:
+            return "Unknown"
+    
+    def render_file_grid(files, category, icon="📎"):
+        if not files:
+            st.info(f"No {category.lower()} found")
+            return
+        
+        st.markdown(f'<div class="file-section-title">{icon} {category}</div>', unsafe_allow_html=True)
+        
+        # Create grid layout using columns
+        cols_per_row = 3
+        for i in range(0, len(files), cols_per_row):
+            cols = st.columns(cols_per_row)
+            for j, file_path in enumerate(files[i:i + cols_per_row]):
+                if os.path.exists(file_path):
+                    with cols[j]:
+                        file_name = os.path.basename(file_path)
+                        file_size = get_file_size(file_path)
+                        file_ext = os.path.splitext(file_path)[1].lower()
+                        
+                        # Card container
+                        with st.container():
+                            st.markdown(f"""
+                            <div class="file-card">
+                            """, unsafe_allow_html=True)
+                            
+                            # Thumbnail or icon (optimized for small display)
+                            if file_ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp']:
+                                try:
+                                    # Load and create thumbnail to reduce memory usage
+                                    img = Image.open(file_path)
+                                    # Create thumbnail (max 300px wide to save memory)
+                                    img.thumbnail((300, 300), Image.Resampling.LANCZOS)
+                                    st.image(img, use_container_width=True)
+                                except:
+                                    st.markdown('<div class="file-thumbnail"></div>', unsafe_allow_html=True)
+                            elif file_ext == '.pdf':
+                                st.markdown('<div class="file-pdf-icon">📄</div>', unsafe_allow_html=True)
+                            else:
+                                st.markdown('<div class="file-pdf-icon">📎</div>', unsafe_allow_html=True)
+                            
+                            # File info
+                            st.markdown(f"""
+                            <div class="file-info">
+                                <div class="file-name" title="{file_name}">{file_name}</div>
+                                <div class="file-meta">
+                                    <span class="file-size">{file_size}</span>
+                                    <span class="file-tag">BYOV</span>
+                                </div>
+                            </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            # Download button (full width, compact)
+                            with open(file_path, "rb") as f:
+                                mime_type = "application/pdf" if file_ext == ".pdf" else "image/jpeg"
+                                st.download_button(
+                                    label="⬇ Download",
+                                    data=f.read(),
+                                    file_name=file_name,
+                                    mime=mime_type,
+                                    key=f"dl_{category}_{tech_id}_{i}_{j}",
+                                    use_container_width=True
+                                )
+    
+    # Signed PDF section
+    pdf_path = original_row.get('signature_pdf_path')
+    if pdf_path and os.path.exists(pdf_path):
+        render_file_grid([pdf_path], "Signed Agreement", "📄")
+        st.markdown("---")
+    
+    # Vehicle photos
+    vehicle_paths = original_row.get('vehicle_photos_paths', [])
+    if isinstance(vehicle_paths, list) and vehicle_paths:
+        valid_paths = [p for p in vehicle_paths if os.path.exists(p)]
+        if valid_paths:
+            render_file_grid(valid_paths, "Vehicle Photos", "🚗")
+            st.markdown("---")
+    
+    # Insurance documents
+    insurance_paths = original_row.get('insurance_docs_paths', [])
+    if isinstance(insurance_paths, list) and insurance_paths:
+        valid_paths = [p for p in insurance_paths if os.path.exists(p)]
+        if valid_paths:
+            render_file_grid(valid_paths, "Insurance Documents", "🛡️")
+            st.markdown("---")
+    
+    # Registration documents
+    registration_paths = original_row.get('registration_docs_paths', [])
+    if isinstance(registration_paths, list) and registration_paths:
+        valid_paths = [p for p in registration_paths if os.path.exists(p)]
+        if valid_paths:
+            render_file_grid(valid_paths, "Registration Documents", "📋")
+    
+    # Bottom close button
+    st.markdown("---")
+    if st.button("✖ Close File Viewer", key="close_modal_bottom", use_container_width=True):
+        if 'show_file_modal' in st.session_state:
+            del st.session_state.show_file_modal
+        st.rerun()
 
 # ------------------------
 # ADMIN DASHBOARD PAGE
@@ -701,231 +1710,204 @@ def page_admin_dashboard():
 
     df = pd.DataFrame(records)
 
-    # Convert date columns
-    for col in ["insurance_exp", "registration_exp"]:
+    # Format dates
+    for col in ["insurance_exp", "registration_exp", "submission_date"]:
         if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors="coerce").dt.date
+            df[col] = pd.to_datetime(df[col], errors="coerce")
+    if "submission_date" in df.columns:
+        df["Date Enrolled"] = df["submission_date"].dt.strftime("%m/%d/%Y").fillna("")
+    else:
+        df["Date Enrolled"] = ""
 
-    # Format industries column for display
-    if "industries" in df.columns:
-        df["industries_display"] = df["industries"].apply(
-            lambda x: ", ".join(x) if isinstance(x, list) else str(x) if x else "None"
-        )
+    # Combine Make & Model
+    df["Make & Model"] = df["make"].astype(str) + " " + df["model"].astype(str)
+    # Ensure state is always a string and never 'None'
+    if "state" in df.columns:
+        df["State"] = df["state"].fillna("").replace("None", "")
+    else:
+        df["State"] = ""
+    # Format insurance/registration expiration
+    if "insurance_exp" in df.columns:
+        df["Insurance Exp. Date"] = df["insurance_exp"].dt.strftime("%m/%d/%Y")
+    else:
+        df["Insurance Exp. Date"] = ""
+    if "registration_exp" in df.columns:
+        df["Registration Exp. Date"] = df["registration_exp"].dt.strftime("%m/%d/%Y")
+    else:
+        df["Registration Exp. Date"] = ""
 
-    # Summary metrics
-    total = len(df)
-    active = (df["status"] == "Active").sum() if "status" in df.columns else total
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Total Enrollments", total)
-    with col2:
-        st.metric("Active", active)
-    with col3:
-        if "state" in df.columns:
-            unique_states = df["state"].nunique()
-            st.metric("States", unique_states)
-
-    st.markdown("---")
-
-    # Search box
-    query = st.text_input(
-        "Search by Technician, Tech ID, District, State, VIN, Make, or Model",
-        "",
-    )
-
-    filtered = df.copy()
-    if query:
-        q = query.lower()
-        searchable_cols = ["full_name", "tech_id", "district", "state", "vin", "make", "model"]
-        mask = False
-        for col in searchable_cols:
-            if col in filtered.columns:
-                col_values = filtered[col].astype(str).str.lower()
-                if isinstance(mask, bool):
-                    mask = col_values.str.contains(q, na=False)
-                else:
-                    mask = mask | col_values.str.contains(q, na=False)
-        filtered = filtered[mask]
-
-    st.subheader("Enrollments Table")
-    
     # Select columns to display
-    display_cols = ["full_name", "tech_id", "district", "state", "vin", "make", "model", "status"]
-    if "industries_display" in filtered.columns:
-        display_cols.insert(4, "industries_display")
-    if "template_used" in filtered.columns:
-        display_cols.append("template_used")
-    
-    # Filter to only existing columns
-    display_cols = [col for col in display_cols if col in filtered.columns]
-    
-    st.dataframe(filtered[display_cols], use_container_width=True)
+    display_cols = [
+        "Date Enrolled", "Insurance Exp. Date", "Registration Exp. Date",
+        "full_name", "tech_id", "district", "State", "vin", "year", "Make & Model"
+    ]
+    display_labels = {
+        "Date Enrolled": "Date Enrolled",
+        "Insurance Exp. Date": "Insurance Exp. Date",
+        "Registration Exp. Date": "Registration Exp. Date",
+        "full_name": "Name",
+        "tech_id": "Tech ID",
+        "district": "District",
+        "State": "State",
+        "vin": "VIN",
+        "year": "Year",
+        "Make & Model": "Make & Model"
+    }
+    df_display = df[display_cols].rename(columns=display_labels)
+    # Add visual columns to mimic the UI from the screenshot
+    df_display["Photos"] = "View Photos"
+    df_display["Send Reminder"] = "—"
+    df_display["Actions"] = "Edit | Remove"
 
-    # File viewing section
-    st.markdown("---")
-    st.subheader("View Enrollment Files")
-    
-    if not filtered.empty:
-        # Create a selector for which enrollment to view
-        enrollment_options = filtered.apply(
-            lambda row: f"{row.get('full_name', 'Unknown')} ({row.get('tech_id', '?')}) - {row.get('vin', '?')[:8]}...",
-            axis=1
-        ).tolist()
-        
-        selected_enrollment_idx = st.selectbox(
-            "Select an enrollment to view files:",
-            range(len(filtered)),
-            format_func=lambda i: enrollment_options[i]
-        )
-        
-        if selected_enrollment_idx is not None:
-            selected_record = filtered.iloc[selected_enrollment_idx]
-            
-            with st.expander(f"📁 Files for {selected_record.get('full_name', 'Unknown')}", expanded=True):
-                # Signed PDF
-                st.write("**Signed BYOV Agreement:**")
-                pdf_path = selected_record.get('signature_pdf_path')
-                if pdf_path and os.path.exists(pdf_path):
-                    with open(pdf_path, "rb") as f:
-                        st.download_button(
-                            label="📄 Download Signed Agreement",
-                            data=f.read(),
-                            file_name=os.path.basename(pdf_path),
-                            mime="application/pdf"
-                        )
-                else:
-                    st.info("No signed agreement PDF found")
-                
-                st.markdown("---")
-                
-                # Vehicle photos
-                st.write("**Vehicle Photos:**")
-                vehicle_paths = selected_record.get('vehicle_photos_paths', [])
-                if isinstance(vehicle_paths, list) and vehicle_paths:
-                    cols = st.columns(4)
-                    for idx, photo_path in enumerate(vehicle_paths):
-                        if os.path.exists(photo_path):
-                            with cols[idx % 4]:
-                                # Display image if it's an image file
-                                if photo_path.lower().endswith(('.jpg', '.jpeg', '.png')):
-                                    st.image(photo_path, caption=f"Photo {idx+1}", width=150)
-                                
-                                # Download button
-                                with open(photo_path, "rb") as f:
-                                    st.download_button(
-                                        label=f"⬇ Photo {idx+1}",
-                                        data=f.read(),
-                                        file_name=os.path.basename(photo_path),
-                                        key=f"vehicle_{selected_enrollment_idx}_{idx}"
-                                    )
-                else:
-                    st.info("No vehicle photos found")
-                
-                st.markdown("---")
-                
-                # Insurance documents
-                st.write("**Insurance Documents:**")
-                insurance_paths = selected_record.get('insurance_docs_paths', [])
-                if isinstance(insurance_paths, list) and insurance_paths:
-                    for idx, doc_path in enumerate(insurance_paths):
-                        if os.path.exists(doc_path):
-                            with open(doc_path, "rb") as f:
-                                file_ext = os.path.splitext(doc_path)[1]
-                                mime_type = "application/pdf" if file_ext.lower() == ".pdf" else "image/jpeg"
-                                st.download_button(
-                                    label=f"📎 Insurance Doc {idx+1} ({os.path.basename(doc_path)})",
-                                    data=f.read(),
-                                    file_name=os.path.basename(doc_path),
-                                    mime=mime_type,
-                                    key=f"insurance_{selected_enrollment_idx}_{idx}"
-                                )
-                else:
-                    st.info("No insurance documents found")
-                
-                st.markdown("---")
-                
-                # Registration documents
-                st.write("**Registration Documents:**")
-                registration_paths = selected_record.get('registration_docs_paths', [])
-                if isinstance(registration_paths, list) and registration_paths:
-                    for idx, doc_path in enumerate(registration_paths):
-                        if os.path.exists(doc_path):
-                            with open(doc_path, "rb") as f:
-                                file_ext = os.path.splitext(doc_path)[1]
-                                mime_type = "application/pdf" if file_ext.lower() == ".pdf" else "image/jpeg"
-                                st.download_button(
-                                    label=f"📎 Registration Doc {idx+1} ({os.path.basename(doc_path)})",
-                                    data=f.read(),
-                                    file_name=os.path.basename(doc_path),
-                                    mime=mime_type,
-                                    key=f"registration_{selected_enrollment_idx}_{idx}"
-                                )
-                else:
-                    st.info("No registration documents found")
+    # Custom paginated table (replaces AgGrid)
+    st.subheader("Enrollments Table")
 
-    # Export buttons
-    st.markdown("---")
-    st.markdown("### Export")
-    col_csv, col_json = st.columns(2)
-    with col_csv:
-        csv_data = filtered.to_csv(index=False).encode("utf-8")
+    # Export current enrollments as CSV (download button)
+    try:
+        csv_bytes = df.to_csv(index=False).encode('utf-8')
         st.download_button(
-            "Download CSV",
-            data=csv_data,
+            label="⬇️ Export CSV",
+            data=csv_bytes,
             file_name="enrollments.csv",
             mime="text/csv",
+            help="Download current enrollments as a CSV file"
         )
-    with col_json:
-        json_data = filtered.to_json(orient="records", indent=2, date_format="iso")
-        st.download_button(
-            "Download JSON",
-            data=json_data,
-            file_name="enrollments.json",
-            mime="application/json",
-        )
-    
-    # ------------------------
-    # Delete a record
-    # ------------------------
-    st.markdown("---")
-    st.subheader("Delete a Record")
+    except Exception:
+        st.warning("Unable to prepare CSV export at this time.")
 
-    if filtered.empty:
-        st.info("No records available to delete (based on current search).")
-    else:
-        # Use the filtered result so search box narrows what you can delete
-        indices = list(filtered.index)
+    # Session state for pagination & UI
+    st.session_state.setdefault('admin_page', 0)
+    st.session_state.setdefault('admin_page_size', 10)
+    st.session_state.setdefault('admin_view_id', None)
+    st.session_state.setdefault('admin_edit_id', None)
+    st.session_state.setdefault('admin_confirm_delete', None)
 
-        def format_record(idx):
-            row = filtered.loc[idx]
-            full_name = row.get("full_name", "Unknown")
-            tech = row.get("tech_id", "?")
-            vin_val = row.get("vin", "?")
-            return f"{full_name} | Tech {tech} | VIN {vin_val}"
+    # Simple search/filter
+    q = st.text_input("Search (Name, Tech ID, VIN)")
+    filtered = []
+    for r in records:
+        if not q:
+            filtered.append(r)
+            continue
+        hay = ' '.join([str(r.get(k, '')).lower() for k in ('full_name', 'tech_id', 'vin')])
+        if q.lower() in hay:
+            filtered.append(r)
 
-        selected_idx = st.selectbox(
-            "Select a record to delete (applies to filtered results above):",
-            indices,
-            format_func=format_record,
-        )
+    total = len(filtered)
+    page_size = st.session_state.admin_page_size
+    page = st.session_state.admin_page
+    max_page = max(0, (total - 1) // page_size)
 
-        if st.button("🗑 Delete selected record"):
-            if selected_idx is not None:
-                row = filtered.loc[selected_idx]
-                record_id = str(row.get("id", ""))
+    # Page controls
+    p1, p2, p3 = st.columns([1,1,8])
+    with p1:
+        if st.button("◀ Prev") and page > 0:
+            st.session_state.admin_page -= 1
+            st.rerun()
+    with p2:
+        if st.button("Next ▶") and page < max_page:
+            st.session_state.admin_page += 1
+            st.rerun()
+    with p3:
+        st.write(f"Showing page {page+1} of {max_page+1} — {total} records")
 
-                if not record_id or record_id == "":
-                    st.error(
-                        "This record has no ID and cannot be deleted here "
-                        "(it was probably created before IDs were added)."
-                    )
+    start = page * page_size
+    end = start + page_size
+    page_rows = filtered[start:end]
+
+    # Table header
+    hdr_cols = st.columns([1.4, 2.4, 2, 1.2, 1.2, 1.6, 1, 2])
+    headers = ["Date", "Name", "Tech ID", "District", "State", "VIN", "Year", "Actions"]
+    for col, h in zip(hdr_cols, headers):
+        col.markdown(f"**{h}**")
+
+    # Rows
+    for rec in page_rows:
+        c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([1.4, 2.4, 2, 1.2, 1.2, 1.6, 1, 2])
+        submission = rec.get('submission_date') or rec.get('Date Enrolled') or ''
+        c1.write(submission)
+        c2.write(rec.get('full_name', ''))
+        c3.write(rec.get('tech_id', ''))
+        c4.write(rec.get('district', ''))
+        c5.write(rec.get('state', rec.get('State', '')))
+        c6.write(rec.get('vin', ''))
+        c7.write(rec.get('year', ''))
+
+        rid = rec.get('id') or rec.get('tech_id')
+        with c8:
+            if st.button("View Files", key=f"view_{rid}"):
+                st.session_state.admin_view_id = rid
+            if st.button("Edit", key=f"edit_{rid}"):
+                st.session_state.admin_edit_id = rid
+            if st.button("Delete", key=f"del_{rid}"):
+                st.session_state.admin_confirm_delete = rid
+
+    # Handle View action (open modal immediately)
+    if st.session_state.admin_view_id:
+        rid = st.session_state.admin_view_id
+        target = None
+        for r in records:
+            if str(r.get('id')) == str(rid) or str(r.get('tech_id')) == str(rid):
+                target = r
+                break
+        if target:
+            render_file_gallery_modal(target, target, target.get('tech_id') or target.get('id'))
+        st.session_state.admin_view_id = None
+
+    # Handle Edit action (inline form)
+    if st.session_state.admin_edit_id:
+        eid = st.session_state.admin_edit_id
+        target = None
+        for r in records:
+            if str(r.get('id')) == str(eid) or str(r.get('tech_id')) == str(eid):
+                target = r
+                break
+        if target:
+            st.markdown("---")
+            st.subheader(f"Edit Enrollment — {target.get('full_name','')}")
+            with st.form(key=f"edit_form_{eid}"):
+                name = st.text_input("Full Name", value=target.get('full_name',''))
+                tech = st.text_input("Tech ID", value=target.get('tech_id',''))
+                district = st.text_input("District", value=target.get('district',''))
+                state = st.text_input("State", value=target.get('state', target.get('State','')))
+                vin = st.text_input("VIN", value=target.get('vin',''))
+                year = st.text_input("Year", value=target.get('year',''))
+                submitted = st.form_submit_button("Save Changes")
+                if submitted:
+                    all_records = load_enrollments()
+                    for rr in all_records:
+                        if str(rr.get('id')) == str(eid) or str(rr.get('tech_id')) == str(eid):
+                            rr['full_name'] = name
+                            rr['tech_id'] = tech
+                            rr['district'] = district
+                            rr['state'] = state
+                            rr['vin'] = vin
+                            rr['year'] = year
+                            break
+                    save_enrollments(all_records)
+                    st.success("Saved changes")
+                    st.session_state.admin_edit_id = None
+                    st.rerun()
+        else:
+            st.session_state.admin_edit_id = None
+
+    # Handle Delete confirmation
+    if st.session_state.admin_confirm_delete:
+        did = st.session_state.admin_confirm_delete
+        st.warning("Are you sure you want to permanently delete this record?")
+        d1, d2 = st.columns([1,1])
+        with d1:
+            if st.button("Yes, delete", key=f"confirm_yes_{did}"):
+                success, message = delete_enrollment(str(did))
+                if success:
+                    st.success(message)
+                    st.session_state.admin_confirm_delete = None
+                    st.rerun()
                 else:
-                    if delete_enrollment(record_id):
-                        st.success("Record deleted.")
-                        st.rerun()
-                    else:
-                        st.error("Record not found or already deleted.")
+                    st.error(message)
+        with d2:
+            if st.button("Cancel", key=f"confirm_no_{did}"):
+                st.session_state.admin_confirm_delete = None
 
 
 # ------------------------
@@ -1095,6 +2077,55 @@ def main():
         initial_sidebar_state="expanded",
     )
     
+    # Set white background for entire app
+    st.markdown("""
+        <style>
+        .stApp {
+            background-color: white;
+        }
+        .main {
+            background-color: white;
+        }
+        [data-testid="stSidebar"] {
+            background-color: #f8f9fa;
+        }
+        /* Sears blue theme for buttons and checkboxes */
+        :root, .stApp {
+            --primaryColor: #0d6efd !important;
+            --primary-color: #0d6efd !important;
+            --accent-color: #0d6efd !important;
+            --theme-primary: #0d6efd !important;
+        }
+        .stButton>button, .stDownloadButton>button, button, [data-testid="stSidebar"] button {
+            background-color: #0d6efd !important;
+            color: #fff !important;
+            border: 1px solid #0d6efd !important;
+            box-shadow: none !important;
+        }
+        .stButton>button:hover, .stDownloadButton>button:hover, button:hover, [data-testid="stSidebar"] button:hover {
+            background-color: #0b5ed7 !important;
+        }
+        .stButton>button:focus, button:focus, [data-testid="stSidebar"] button:focus {
+            outline: 3px solid rgba(13,110,253,0.18) !important;
+            box-shadow: 0 0 0 3px rgba(13,110,253,0.08) !important;
+        }
+        /* Accent color for native checkboxes and radios (modern browsers) */
+        input[type="checkbox"], input[type="radio"] {
+            accent-color: #0d6efd !important;
+            -webkit-appearance: auto !important;
+        }
+        /* Force colored checkbox backgrounds where browsers use SVGs */
+        input[type="checkbox"]:checked::before, input[type="checkbox"]:checked {
+            background-color: #0d6efd !important;
+            border-color: #0d6efd !important;
+        }
+        /* Fallback: style labels near checkboxes to look accented */
+        .stCheckbox, .stRadio {
+            color: inherit !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+    
     # Check for required PDF templates
     templates_ok = True
     if not os.path.exists(DEFAULT_TEMPLATE):
@@ -1106,8 +2137,16 @@ def main():
     if not templates_ok:
         st.stop()
 
-    # Sidebar navigation
-    st.sidebar.title("BYOV Program")
+    # Sidebar navigation with Sears branding
+    logo_path = "Sears Image.png"
+    if os.path.exists(logo_path):
+        st.sidebar.image(logo_path, width=200)
+    
+    st.sidebar.markdown("**BYOV Program Management**")
+    st.sidebar.caption("Technician Enrollment")
+    st.sidebar.markdown("---")
+    
+    st.sidebar.title("Select a page")
     
     # Check for admin mode
     admin_mode = st.query_params.get("admin") == "true"
@@ -1123,6 +2162,24 @@ def main():
     
     if admin_mode:
         st.sidebar.info("🔧 Admin mode enabled")
+
+    # Simple admin authentication stored in session_state
+    st.session_state.setdefault('admin_authenticated', False)
+    # If user selected an admin page, require password before rendering
+    if page in ("Admin Dashboard", "Admin Settings"):
+        if not st.session_state.get('admin_authenticated'):
+            pwd = st.sidebar.text_input("Admin password", type="password")
+            if st.sidebar.button("Unlock Admin"):
+                if pwd == "admin123":
+                    st.session_state.admin_authenticated = True
+                    st.sidebar.success("Admin unlocked")
+                    # refresh UI to show admin page
+                    st.rerun()
+                else:
+                    st.sidebar.error("Incorrect password")
+            # Block access until authenticated
+            st.warning("This page requires administrator authentication.")
+            return
 
     if page == "New Enrollment":
         page_new_enrollment()

@@ -1,12 +1,12 @@
 # BYOV-enrollment-automation
 
-Automated BYOV enrollment engine with VIN decoding, data collection, PDF generation, and API integrations.
+Automated BYOV enrollment engine with VIN decoding, data collection, PDF generation, and an admin dashboard.
 
 ## Features
 - Streamlit UI captures Tech ID, technician name, district, VIN, year, make, and model.
 - VIN decode helper using the NHTSA public API.
 - Signature pad that blocks submissions until signed; unsigned attempts are rejected.
-- Photo collection both through the Streamlit form and a FastAPI `/photos` endpoint for POST uploads.
+-- Photo collection through the Streamlit form (uploads saved under `uploads/`).
 - PDF generation with submitted details and embedded signature.
 - Email notification with submission details, PDF, and photo attachments (configurable via SMTP environment variables).
 
@@ -18,20 +18,18 @@ Automated BYOV enrollment engine with VIN decoding, data collection, PDF generat
    pip install -r requirements.txt
    ```
 
-2. Configure SMTP (optional, required for email delivery). You can copy `.env.example` to `.env` and fill in your credentials; `app.py` loads it automatically.
-   ```bash
-   cp .env.example .env
-   export SMTP_HOST="smtp.example.com"
-   export SMTP_PORT="587"
-   export SMTP_USERNAME="user@example.com"
-   export SMTP_PASSWORD="app-password"
-   export SMTP_FROM="user@example.com"
-   export SMTP_TO="recipient1@example.com,recipient2@example.com"
+2. Configure SMTP (optional, required for email delivery). The app uses Streamlit `secrets.toml` for email config.
+   Create `secrets.toml` in the project root with the following structure:
+   ```toml
+   [email]
+   sender = "you@example.com"
+   app_password = "your-app-password"
+   recipient = "recipient@example.com"
    ```
 
 3. Run the Streamlit app:
-   ```bash
-   streamlit run app.py
+   ```powershell
+   streamlit run byov_app.py
    ```
 
 4. (Optional) Start the photo upload API for POST-based uploads:
