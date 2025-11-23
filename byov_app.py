@@ -20,6 +20,7 @@ from reportlab.lib.pagesizes import letter
 import database
 from database import get_enrollment_by_id, get_documents_for_enrollment
 from notifications import send_email_notification
+from admin_dashboard import page_admin_control_center
 
 
 DATA_FILE = "enrollments.json"
@@ -1630,222 +1631,6 @@ def render_file_gallery_modal(original_row, selected_row, tech_id):
         st.rerun()
 
 # ------------------------
-# ADMIN DASHBOARD PAGE
-# ------------------------
-def page_admin_dashboard():
-    st.title("BYOV Admin Dashboard")
-    st.caption("Review and export vehicle enrollments.")
-
-    import pandas as pd
-
-    records = load_enrollments()
-    if not records:
-        st.info("No enrollments found yet.")
-        return
-
-    df = pd.DataFrame(records)
-
-    # Format dates
-    for col in ["insurance_exp", "registration_exp", "submission_date"]:
-        if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors="coerce")
-    if "submission_date" in df.columns:
-        df["Date Enrolled"] = df["submission_date"].dt.strftime("%m/%d/%Y").fillna("")
-    else:
-        df["Date Enrolled"] = ""
-
-    # Combine Make & Model
-    df["Make & Model"] = df["make"].astype(str) + " " + df["model"].astype(str)
-    # Ensure state is always a string and never 'None'
-    if "state" in df.columns:
-        df["State"] = df["state"].fillna("").replace("None", "")
-    else:
-        df["State"] = ""
-    # Format insurance/registration expiration
-    if "insurance_exp" in df.columns:
-        df["Insurance Exp. Date"] = df["insurance_exp"].dt.strftime("%m/%d/%Y")
-    else:
-        df["Insurance Exp. Date"] = ""
-    if "registration_exp" in df.columns:
-        df["Registration Exp. Date"] = df["registration_exp"].dt.strftime("%m/%d/%Y")
-    else:
-        df["Registration Exp. Date"] = ""
-
-    # Select columns to display
-    display_cols = [
-        "Date Enrolled", "Insurance Exp. Date", "Registration Exp. Date",
-        "full_name", "tech_id", "district", "State", "vin", "year", "Make & Model"
-    ]
-    display_labels = {
-        "Date Enrolled": "Date Enrolled",
-        "Insurance Exp. Date": "Insurance Exp. Date",
-        "Registration Exp. Date": "Registration Exp. Date",
-        "full_name": "Name",
-        "tech_id": "Tech ID",
-        "district": "District",
-        "State": "State",
-        "vin": "VIN",
-        "year": "Year",
-        "Make & Model": "Make & Model"
-    }
-    df_display = df[display_cols].rename(columns=display_labels)
-    # Add visual columns to mimic the UI from the screenshot
-    df_display["Photos"] = "View Photos"
-    df_display["Send Reminder"] = "—"
-    df_display["Actions"] = "Edit | Remove"
-
-    # Custom paginated table (replaces AgGrid)
-    st.subheader("Enrollments Table")
-
-    # Export current enrollments as CSV (download button)
-    try:
-        csv_bytes = df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="⬇️ Export CSV",
-            data=csv_bytes,
-            file_name="enrollments.csv",
-            mime="text/csv",
-            help="Download current enrollments as a CSV file"
-        )
-    except Exception:
-        st.warning("Unable to prepare CSV export at this time.")
-
-    # Session state for pagination & UI
-    st.session_state.setdefault('admin_page', 0)
-    st.session_state.setdefault('admin_page_size', 10)
-    st.session_state.setdefault('admin_view_id', None)
-    st.session_state.setdefault('admin_edit_id', None)
-    st.session_state.setdefault('admin_confirm_delete', None)
-
-    # Simple search/filter
-    q = st.text_input("Search (Name, Tech ID, VIN)")
-    filtered = []
-    for r in records:
-        if not q:
-            filtered.append(r)
-            continue
-        hay = ' '.join([str(r.get(k, '')).lower() for k in ('full_name', 'tech_id', 'vin')])
-        if q.lower() in hay:
-            filtered.append(r)
-
-    total = len(filtered)
-    page_size = st.session_state.admin_page_size
-    page = st.session_state.admin_page
-    max_page = max(0, (total - 1) // page_size)
-
-    # Page controls
-    p1, p2, p3 = st.columns([1,1,8])
-    with p1:
-        if st.button("◀ Prev") and page > 0:
-            st.session_state.admin_page -= 1
-            st.rerun()
-    with p2:
-        if st.button("Next ▶") and page < max_page:
-            st.session_state.admin_page += 1
-            st.rerun()
-    with p3:
-        st.write(f"Showing page {page+1} of {max_page+1} — {total} records")
-
-    start = page * page_size
-    end = start + page_size
-    page_rows = filtered[start:end]
-
-    # Table header
-    hdr_cols = st.columns([1.4, 2.4, 2, 1.2, 1.2, 1.6, 1, 2])
-    headers = ["Date", "Name", "Tech ID", "District", "State", "VIN", "Year", "Actions"]
-    for col, h in zip(hdr_cols, headers):
-        col.markdown(f"**{h}**")
-
-    # Rows
-    for rec in page_rows:
-        c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([1.4, 2.4, 2, 1.2, 1.2, 1.6, 1, 2])
-        submission = rec.get('submission_date') or rec.get('Date Enrolled') or ''
-        c1.write(submission)
-        c2.write(rec.get('full_name', ''))
-        c3.write(rec.get('tech_id', ''))
-        c4.write(rec.get('district', ''))
-        c5.write(rec.get('state', rec.get('State', '')))
-        c6.write(rec.get('vin', ''))
-        c7.write(rec.get('year', ''))
-
-        rid = rec.get('id') or rec.get('tech_id')
-        with c8:
-            if st.button("View Files", key=f"view_{rid}"):
-                st.session_state.admin_view_id = rid
-            if st.button("Edit", key=f"edit_{rid}"):
-                st.session_state.admin_edit_id = rid
-            if st.button("Delete", key=f"del_{rid}"):
-                st.session_state.admin_confirm_delete = rid
-
-    # Handle View action (open modal immediately)
-    if st.session_state.admin_view_id:
-        rid = st.session_state.admin_view_id
-        target = None
-        for r in records:
-            if str(r.get('id')) == str(rid) or str(r.get('tech_id')) == str(rid):
-                target = r
-                break
-        if target:
-            render_file_gallery_modal(target, target, target.get('tech_id') or target.get('id'))
-        st.session_state.admin_view_id = None
-
-    # Handle Edit action (inline form)
-    if st.session_state.admin_edit_id:
-        eid = st.session_state.admin_edit_id
-        target = None
-        for r in records:
-            if str(r.get('id')) == str(eid) or str(r.get('tech_id')) == str(eid):
-                target = r
-                break
-        if target:
-            st.markdown("---")
-            st.subheader(f"Edit Enrollment — {target.get('full_name','')}")
-            with st.form(key=f"edit_form_{eid}"):
-                name = st.text_input("Full Name", value=target.get('full_name',''))
-                tech = st.text_input("Tech ID", value=target.get('tech_id',''))
-                district = st.text_input("District", value=target.get('district',''))
-                state = st.text_input("State", value=target.get('state', target.get('State','')))
-                vin = st.text_input("VIN", value=target.get('vin',''))
-                year = st.text_input("Year", value=target.get('year',''))
-                submitted = st.form_submit_button("Save Changes")
-                if submitted:
-                    all_records = load_enrollments()
-                    for rr in all_records:
-                        if str(rr.get('id')) == str(eid) or str(rr.get('tech_id')) == str(eid):
-                            rr['full_name'] = name
-                            rr['tech_id'] = tech
-                            rr['district'] = district
-                            rr['state'] = state
-                            rr['vin'] = vin
-                            rr['year'] = year
-                            break
-                    save_enrollments(all_records)
-                    st.success("Saved changes")
-                    st.session_state.admin_edit_id = None
-                    st.rerun()
-        else:
-            st.session_state.admin_edit_id = None
-
-    # Handle Delete confirmation
-    if st.session_state.admin_confirm_delete:
-        did = st.session_state.admin_confirm_delete
-        st.warning("Are you sure you want to permanently delete this record?")
-        d1, d2 = st.columns([1,1])
-        with d1:
-            if st.button("Yes, delete", key=f"confirm_yes_{did}"):
-                success, message = delete_enrollment(str(did))
-                if success:
-                    st.success(message)
-                    st.session_state.admin_confirm_delete = None
-                    st.rerun()
-                else:
-                    st.error(message)
-        with d2:
-            if st.button("Cancel", key=f"confirm_no_{did}"):
-                st.session_state.admin_confirm_delete = None
-
-
-# ------------------------
 # ADMIN SETTINGS PAGE (Hidden)
 # ------------------------
 def page_admin_settings():
@@ -2086,7 +1871,7 @@ def main():
     # Check for admin mode
     admin_mode = st.query_params.get("admin") == "true"
     
-    page_options = ["New Enrollment", "Admin Dashboard"]
+    page_options = ["New Enrollment", "Admin Control Center"]
     if admin_mode:
         page_options.append("Admin Settings")
     
@@ -2098,28 +1883,10 @@ def main():
     if admin_mode:
         st.sidebar.info("🔧 Admin mode enabled")
 
-    # Simple admin authentication stored in session_state
-    st.session_state.setdefault('admin_authenticated', False)
-    # If user selected an admin page, require password before rendering
-    if page in ("Admin Dashboard", "Admin Settings"):
-        if not st.session_state.get('admin_authenticated'):
-            pwd = st.sidebar.text_input("Admin password", type="password")
-            if st.sidebar.button("Unlock Admin"):
-                if pwd == "admin123":
-                    st.session_state.admin_authenticated = True
-                    st.sidebar.success("Admin unlocked")
-                    # refresh UI to show admin page
-                    st.rerun()
-                else:
-                    st.sidebar.error("Incorrect password")
-            # Block access until authenticated
-            st.warning("This page requires administrator authentication.")
-            return
-
     if page == "New Enrollment":
         page_new_enrollment()
-    elif page == "Admin Dashboard":
-        page_admin_dashboard()
+    elif page == "Admin Control Center":
+        page_admin_control_center()
     elif page == "Admin Settings":
         page_admin_settings()
 

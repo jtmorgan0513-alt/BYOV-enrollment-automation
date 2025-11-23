@@ -25,7 +25,7 @@ def init_db():
     if not os.path.exists(DATA_DIR):
         os.makedirs(DATA_DIR)
 
-    if USE_SQLITE:
+    if USE_SQLITE and sqlite3 is not None:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
 
@@ -130,7 +130,7 @@ def _save_store(store):
 # ============================================================
 def insert_enrollment(record):
     """Insert a new enrollment row and return its assigned ID."""
-    if USE_SQLITE:
+    if USE_SQLITE and sqlite3 is not None:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
 
@@ -183,7 +183,7 @@ def insert_enrollment(record):
 
 def get_all_enrollments():
     """Return all enrollments as list[dict]."""
-    if USE_SQLITE:
+    if USE_SQLITE and sqlite3 is not None:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
 
@@ -211,7 +211,7 @@ def get_all_enrollments():
 
 def get_enrollment_by_id(enrollment_id):
     """Return a single enrollment + all documents."""
-    if USE_SQLITE:
+    if USE_SQLITE and sqlite3 is not None:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
 
@@ -257,7 +257,7 @@ def get_enrollment_by_id(enrollment_id):
 
 def update_enrollment(enrollment_id, updates: dict):
     """Update specific fields on an enrollment."""
-    if USE_SQLITE:
+    if USE_SQLITE and sqlite3 is not None:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
 
@@ -291,7 +291,7 @@ def update_enrollment(enrollment_id, updates: dict):
 
 def delete_enrollment(enrollment_id):
     """Delete enrollment + all documents."""
-    if USE_SQLITE:
+    if USE_SQLITE and sqlite3 is not None:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
 
@@ -311,7 +311,7 @@ def delete_enrollment(enrollment_id):
 # DOCUMENT FUNCTIONS
 # ============================================================
 def add_document(enrollment_id, doc_type, file_path):
-    if USE_SQLITE:
+    if USE_SQLITE and sqlite3 is not None:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
 
@@ -334,7 +334,7 @@ def add_document(enrollment_id, doc_type, file_path):
 
 
 def get_documents_for_enrollment(enrollment_id):
-    if USE_SQLITE:
+    if USE_SQLITE and sqlite3 is not None:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
 
@@ -350,7 +350,7 @@ def get_documents_for_enrollment(enrollment_id):
 
 
 def delete_documents_for_enrollment(enrollment_id):
-    if USE_SQLITE:
+    if USE_SQLITE and sqlite3 is not None:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
 
@@ -367,7 +367,7 @@ def delete_documents_for_enrollment(enrollment_id):
 # NOTIFICATION RULES
 # ============================================================
 def add_notification_rule(rule):
-    if USE_SQLITE:
+    if USE_SQLITE and sqlite3 is not None:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
 
@@ -403,7 +403,7 @@ def add_notification_rule(rule):
 
 
 def get_notification_rules():
-    if USE_SQLITE:
+    if USE_SQLITE and sqlite3 is not None:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
 
@@ -426,7 +426,7 @@ def get_notification_rules():
 
 
 def update_notification_rule(rule_id, updates: dict):
-    if USE_SQLITE:
+    if USE_SQLITE and sqlite3 is not None:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
 
@@ -457,7 +457,7 @@ def update_notification_rule(rule_id, updates: dict):
 
 
 def delete_notification_rule(rule_id):
-    if USE_SQLITE:
+    if USE_SQLITE and sqlite3 is not None:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute("DELETE FROM notification_rules WHERE id = ?", (rule_id,))
@@ -473,7 +473,7 @@ def delete_notification_rule(rule_id):
 # SENT NOTIFICATIONS
 # ============================================================
 def log_notification_sent(enrollment_id, rule_id):
-    if USE_SQLITE:
+    if USE_SQLITE and sqlite3 is not None:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
 
@@ -496,7 +496,7 @@ def log_notification_sent(enrollment_id, rule_id):
 
 
 def get_sent_notifications(enrollment_id):
-    if USE_SQLITE:
+    if USE_SQLITE and sqlite3 is not None:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
 

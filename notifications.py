@@ -12,7 +12,7 @@ from datetime import datetime
 import streamlit as st
 
 
-def send_email_notification(record):
+def send_email_notification(record, recipients=None, subject=None):
     """Send an email notification about an enrollment record.
 
     This function mirrors the email behavior used by the main app but is
@@ -25,7 +25,18 @@ def send_email_notification(record):
 
     sender = email_config.get("sender")
     app_password = email_config.get("app_password")
-    recipient = email_config.get("recipient")
+    default_recipient = email_config.get("recipient")
+
+    # recipients override: can be a string (single email) or list of emails
+    if recipients:
+        if isinstance(recipients, str):
+            recipient_list = [r.strip() for r in recipients.split(',') if r.strip()]
+        elif isinstance(recipients, (list, tuple)):
+            recipient_list = [r for r in recipients if r]
+        else:
+            recipient_list = [str(recipients)]
+    else:
+        recipient_list = [default_recipient] if default_recipient else []
 
     subject = f"New BYOV Enrollment: {record.get('full_name','Unknown')} (Tech {record.get('tech_id','N/A')})"
 
@@ -85,9 +96,9 @@ This is an automated notification from the BYOV Enrollment System.
 
     msg = MIMEMultipart()
     msg["From"] = sender or "no-reply@example.com"
-    msg["To"] = recipient or ""
+    msg["To"] = ", ".join(recipient_list) if recipient_list else ""
     msg["Date"] = formatdate(localtime=True)
-    msg["Subject"] = subject
+    msg["Subject"] = subject or subject or f"New BYOV Enrollment: {record.get('full_name','Unknown')}"
     msg.attach(MIMEText(body, "plain"))
 
     # Collect file paths referenced in the record
@@ -148,13 +159,14 @@ This is an automated notification from the BYOV Enrollment System.
                 except Exception:
                     continue
 
-        if not sender or not app_password or not recipient:
-            st.warning("Email credentials or recipient not fully configured in secrets; skipping email send.")
+        if not sender or not app_password or not recipient_list:
+            st.warning("Email credentials or recipient(s) not fully configured; skipping email send.")
             return False
 
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(sender, app_password)
-            server.sendmail(sender, recipient, msg.as_string())
+            # sendmail expects sender, list of recipients
+            server.sendmail(sender, recipient_list, msg.as_string())
         return True
     except Exception as e:
         st.error(f"Email sending failed: {str(e)}")
