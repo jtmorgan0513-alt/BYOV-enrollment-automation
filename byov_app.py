@@ -146,13 +146,44 @@ def create_upload_folder(tech_id: str, record_id: str) -> str:
 
 
 def save_uploaded_files(uploaded_files, folder_path: str, prefix: str) -> list:
+    """Save uploaded files and compress images for email notifications."""
     file_paths = []
     for idx, uploaded_file in enumerate(uploaded_files, 1):
-        ext = os.path.splitext(uploaded_file.name)[1]
+        ext = os.path.splitext(uploaded_file.name)[1].lower()
         filename = f"{prefix}_{idx}{ext}"
         path = os.path.join(folder_path, filename)
-        with open(path, 'wb') as f:
-            f.write(uploaded_file.getbuffer())
+        
+        # Compress images (JPG, JPEG, PNG) for email notifications
+        if ext in ['.jpg', '.jpeg', '.png']:
+            try:
+                img = Image.open(uploaded_file)
+                
+                # Convert to RGB if needed (for PNG with alpha)
+                if img.mode in ('RGBA', 'LA', 'P'):
+                    background = Image.new('RGB', img.size, (255, 255, 255))
+                    if img.mode == 'P':
+                        img = img.convert('RGBA')
+                    background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                    img = background
+                
+                # Resize if too large (max 1920px on longest side)
+                max_size = 1920
+                if max(img.size) > max_size:
+                    img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+                
+                # Save with compression
+                img.save(path, 'JPEG', quality=85, optimize=True)
+                
+            except Exception:
+                # If compression fails, save original
+                with open(path, 'wb') as f:
+                    uploaded_file.seek(0)
+                    f.write(uploaded_file.getbuffer())
+        else:
+            # Non-image files: save as-is
+            with open(path, 'wb') as f:
+                f.write(uploaded_file.getbuffer())
+        
         file_paths.append(path)
     return file_paths
 

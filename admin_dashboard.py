@@ -70,6 +70,44 @@ def _enrollments_tab(enrollments):
     import pandas as pd
 
     st.subheader("Enrollments")
+    
+    # Add CSS for grid table styling
+    st.markdown("""
+    <style>
+    .enrollment-table-header {
+        display: grid;
+        grid-template-columns: 0.5fr 1.5fr 0.8fr 0.8fr 1.2fr 1.0fr 0.6fr 0.6fr 0.6fr;
+        gap: 8px;
+        padding: 12px;
+        background: #f0f2f6;
+        border: 1px solid #d0d0d0;
+        border-radius: 4px 4px 0 0;
+        font-weight: 600;
+        margin-top: 20px;
+    }
+    .enrollment-row {
+        display: grid;
+        grid-template-columns: 0.5fr 1.5fr 0.8fr 0.8fr 1.2fr 1.0fr 0.6fr 0.6fr 0.6fr;
+        gap: 8px;
+        padding: 12px;
+        border: 1px solid #e0e0e0;
+        border-top: none;
+        background: white;
+        align-items: center;
+    }
+    .enrollment-row:hover {
+        background: #f8f9fa;
+    }
+    .enrollment-row:last-child {
+        border-radius: 0 0 4px 4px;
+    }
+    .enrollment-cell {
+        padding: 4px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
     # -----------------------------
     # No enrollments
@@ -132,13 +170,19 @@ def _enrollments_tab(enrollments):
     # -----------------------------
     # Table Header
     # -----------------------------
-    st.markdown("---")
-    header_cols = st.columns([0.5, 1.5, 0.8, 0.8, 1.2, 1.0, 0.6, 0.6, 0.6])
-    headers = ["ID", "Name", "Tech ID", "District", "Industries", "Vehicle", "📸", "✓", "🗑️"]
-    for col, header in zip(header_cols, headers):
-        col.markdown(f"**{header}**")
-    
-    st.markdown("---")
+    st.markdown("""
+    <div class="enrollment-table-header">
+        <div>ID</div>
+        <div>Name</div>
+        <div>Tech ID</div>
+        <div>District</div>
+        <div>Industries</div>
+        <div>Vehicle</div>
+        <div>📸</div>
+        <div>✓</div>
+        <div>🗑️</div>
+    </div>
+    """, unsafe_allow_html=True)
     
     # -----------------------------
     # Render Rows with Inline Buttons
@@ -156,16 +200,19 @@ def _enrollments_tab(enrollments):
         # Format vehicle info
         vehicle_info = f"{row.get('year', '')} {row.get('make', '')} {row.get('model', '')}"
         
+        # Start row container
+        st.markdown('<div class="enrollment-row">', unsafe_allow_html=True)
+        
         # Create row columns
         cols = st.columns([0.5, 1.5, 0.8, 0.8, 1.2, 1.0, 0.6, 0.6, 0.6])
         
         # Data columns
-        cols[0].write(str(enrollment_id))
-        cols[1].write(row.get('full_name', 'N/A'))
-        cols[2].write(row.get('tech_id', 'N/A'))
-        cols[3].write(row.get('district', 'N/A'))
-        cols[4].write(industries_str)
-        cols[5].write(vehicle_info)
+        cols[0].markdown(f'<div class="enrollment-cell">{enrollment_id}</div>', unsafe_allow_html=True)
+        cols[1].markdown(f'<div class="enrollment-cell">{row.get("full_name", "N/A")}</div>', unsafe_allow_html=True)
+        cols[2].markdown(f'<div class="enrollment-cell">{row.get("tech_id", "N/A")}</div>', unsafe_allow_html=True)
+        cols[3].markdown(f'<div class="enrollment-cell">{row.get("district", "N/A")}</div>', unsafe_allow_html=True)
+        cols[4].markdown(f'<div class="enrollment-cell">{industries_str}</div>', unsafe_allow_html=True)
+        cols[5].markdown(f'<div class="enrollment-cell">{vehicle_info}</div>', unsafe_allow_html=True)
         
         # Action buttons
         with cols[6]:
@@ -246,7 +293,7 @@ def _enrollments_tab(enrollments):
                     st.session_state.delete_confirm[enrollment_id] = True
                     st.rerun()
         
-        st.markdown("---")
+        st.markdown('</div>', unsafe_allow_html=True)
     
     # Show selected count
     if st.session_state.selected_enrollment_ids:
@@ -325,7 +372,7 @@ def _enrollments_tab(enrollments):
             st.markdown("<br>", unsafe_allow_html=True)
             c1, c2, c3 = st.columns([2,1,2])
             with c2:
-                if st.button("Close", type="primary"):
+                if st.button("Close", type="primary", key=f"close_modal_{enrollment_id}"):
                     st.session_state.open_photos_for_id = None
                     st.rerun()
 
