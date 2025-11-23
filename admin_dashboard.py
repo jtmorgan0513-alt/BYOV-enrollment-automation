@@ -3,6 +3,8 @@ import streamlit as st
 from datetime import datetime
 import database
 from notifications import send_email_notification
+import shutil
+from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 
 try:
     import sqlite3
@@ -80,26 +82,24 @@ def _overview_tab(enrollments, rules, sent):
 
 
 def _enrollments_tab(enrollments):
-    from st_aggrid import AgGrid, GridOptionsBuilder
     import pandas as pd
-    from datetime import datetime
-    import shutil
 
     st.subheader("Enrollments")
 
+    # -----------------------------
+    # No enrollments
+    # -----------------------------
     if not enrollments:
         st.info("No enrollments yet.")
         return
 
     # -----------------------------
-    # State (search, pagination, etc.)
+    # Session state
     # -----------------------------
-    st.session_state.setdefault('ecc_search', '')
-    st.session_state.setdefault('ecc_page', 0)
-    st.session_state.setdefault('ecc_page_size', 10)
-    st.session_state.setdefault('ecc_view_id', None)
-    st.session_state.setdefault('ecc_edit_id', None)
-    st.session_state.setdefault('ecc_delete_id', None)
+    st.session_state.setdefault("ecc_search", "")
+    st.session_state.setdefault("ecc_page", 0)
+    st.session_state.setdefault("ecc_page_size", 10)
+    st.session_state.setdefault("open_photos_for_id", None)
 
     # -----------------------------
     # Search
@@ -112,29 +112,30 @@ def _enrollments_tab(enrollments):
         if not q:
             filtered.append(r)
             continue
-        
-        hay = ' '.join([str(r.get(k, '')).lower() for k in ('full_name', 'tech_id', 'vin')])
+        hay = " ".join([str(r.get(k, "")).lower() for k in ("full_name", "tech_id", "vin")])
         if q.lower() in hay:
             filtered.append(r)
 
     # -----------------------------
-    # Pagin1FTLR4FEXAPA20178ation
+    # Pagination
     # -----------------------------
     total = len(filtered)
     page_size = st.session_state.ecc_page_size
     page = st.session_state.ecc_page
     max_page = max(0, (total - 1) // page_size)
 
-    cnav1, cnav2, cnav3 = st.columns([1, 1, 4])
-    with cnav1:
+    col_prev, col_next, col_info = st.columns([1, 1, 4])
+    with col_prev:
         if st.button("◀ Prev", disabled=page <= 0):
             st.session_state.ecc_page = max(0, page - 1)
             st.rerun()
-    with cnav2:
+
+    with col_next:
         if st.button("Next ▶", disabled=page >= max_page):
             st.session_state.ecc_page = min(max_page, page + 1)
             st.rerun()
-    with cnav3:
+
+    with col_info:
         st.write(f"Page {page+1} of {max_page+1} — {total} records")
 
     start = page * page_size
@@ -142,79 +143,110 @@ def _enrollments_tab(enrollments):
     page_rows = filtered[start:end]
 
     # -----------------------------
-    # AG-Grid Table
+    # DataFrame + formatting
     # -----------------------------
     df = pd.DataFrame(page_rows)
 
-    # Keep the 'id' column for deletion tracking but move unwanted columns
-    columns_to_hide = ["comment", "template_used"]
-    for col in columns_to_hide:
-        if col in df.columns:
-            df.drop(columns=[col], inplace=True)
+    # Add photos column for button renderer
+    df["photos"] = ""
 
-    # Format submission date
     if "submission_date" in df.columns:
         df["submission_date"] = df["submission_date"].apply(
             lambda d: datetime.fromisoformat(d).strftime("%m/%d/%Y") if d else ""
         )
 
-    # Build grid with selection enabled
+    # -----------------------------
+    # AG-Grid Button Renderer
+    # -----------------------------
+    photo_btn_js = JsCode(
+        """
+        function(params) {
+            return `
+              <button 
+                style="
+                  background-color:#1e88e5;
+                  color:white;
+                  padding:4px 10px;
+                  border:none;
+                  border-radius:4px;
+                  cursor:pointer;
+                  font-weight:600;
+                ">
+                📸 View
+              </button>
+            `;
+        }
+        """
+    )
+
+    # -----------------------------
+    # Build Grid Options
+    # -----------------------------
     gb = GridOptionsBuilder.from_dataframe(df)
-    gb.configure_default_column(
-        resizable=True,
-        filter=True,
-        sortable=True,
-    )
-    
-    # Enable row selection with checkboxes
-    gb.configure_selection(
-        selection_mode='multiple',
-        use_checkbox=True,
-        header_checkbox=True,
-        pre_selected_rows=[]
-    )
-    
-    # Hide the 'id' column but keep it in data
+    gb.configure_default_column(resizable=True, filter=True, sortable=True)
+    gb.configure_selection("multiple", use_checkbox=True, header_checkbox=True)
     gb.configure_column("id", hide=True)
+    
+    # Hide unwanted columns
+    for col in ["comment", "template_used"]:
+        if col in df.columns:
+            gb.configure_column(col, hide=True)
 
-    # Match pagination in Streamlit with pagination inside AG-Grid
-    gb.configure_pagination(
-        paginationAutoPageSize=False,
-        paginationPageSize=page_size,
+    # Add Photos action column
+    gb.configure_column(
+        "photos",
+        headerName="Photos",
+        cellRenderer=photo_btn_js,
+        width=120,
+        pinned="right",
     )
 
-    grid = AgGrid(
+    gb.configure_pagination(False, page_size)
+
+    grid_resp = AgGrid(
         df,
         gridOptions=gb.build(),
-        theme="alpine",
-        fit_columns_on_grid_load=True,
         allow_unsafe_jscode=True,
-        update_mode='SELECTION_CHANGED'
+        update_mode="SELECTION_CHANGED",
+        fit_columns_on_grid_load=True,
+        theme="alpine",
     )
+
+    # -----------------------------
+    # Row click → Open modal
+    # -----------------------------
+    selected = grid_resp.get("selected_rows", [])
+    
+    # Check for single row selection to view photos
+    if selected and len(selected) == 1:
+        sel = selected[0]
+        # Only open modal if it's not already open for this enrollment
+        if st.session_state.open_photos_for_id != sel["id"]:
+            st.session_state.open_photos_for_id = sel["id"]
+            st.rerun()
     
     # -----------------------------
     # Delete Selected Enrollments
     # -----------------------------
-    selected_rows = grid.get('selected_rows', [])
-    
-    if selected_rows is not None and len(selected_rows) > 0:
-        st.warning(f"⚠️ {len(selected_rows)} enrollment(s) selected")
+    if selected and len(selected) > 0:
+        st.markdown("---")
+        st.warning(f"⚠️ {len(selected)} enrollment(s) selected")
         
         col1, col2 = st.columns([1, 5])
         with col1:
-            if st.button("🗑️ Delete Selected", type="primary"):
+            if st.button("🗑️ Delete Selected", type="primary", key="delete_selected_btn"):
                 deleted_count = 0
                 files_deleted = 0
                 
-                for selected in selected_rows:
-                    enrollment_id = selected.get('id')
-                    tech_id = selected.get('tech_id', 'unknown')
+                for sel_row in selected:
+                    enrollment_id = sel_row.get('id')
+                    tech_id = sel_row.get('tech_id', 'unknown')
                     
                     try:
                         # Get documents to find file paths
                         docs = database.get_documents_for_enrollment(enrollment_id)
                         
-                        # Delete uploaded files
+                        # Delete individual uploaded files tracked in database
                         for doc in docs:
                             file_path = doc.get('file_path')
                             if file_path and os.path.exists(file_path):
@@ -224,36 +256,31 @@ def _enrollments_tab(enrollments):
                                 except Exception:
                                     pass
                         
-                        # Delete upload directory for this enrollment
-                        upload_dirs = [
-                            f"uploads/{tech_id}_{uuid}" 
-                            for uuid in os.listdir('uploads') 
-                            if os.path.isdir(f"uploads/{uuid}") and tech_id in uuid
-                        ] if os.path.exists('uploads') else []
+                        # Delete upload folder for this enrollment (pattern: uploads/techid_uuid/)
+                        if os.path.exists('uploads'):
+                            upload_folder_prefix = f"{tech_id}_"
+                            for folder in os.listdir('uploads'):
+                                if folder.startswith(upload_folder_prefix):
+                                    folder_path = os.path.join('uploads', folder)
+                                    if os.path.isdir(folder_path):
+                                        try:
+                                            shutil.rmtree(folder_path, ignore_errors=True)
+                                        except Exception:
+                                            pass
                         
-                        for upload_dir in upload_dirs:
-                            if os.path.exists(upload_dir):
-                                try:
-                                    shutil.rmtree(upload_dir)
-                                except Exception:
-                                    pass
+                        # Delete generated PDF (pattern: pdfs/techid_uuid.pdf)
+                        if os.path.exists('pdfs'):
+                            pdf_prefix = f"{tech_id}_"
+                            for pdf_file in os.listdir('pdfs'):
+                                if pdf_file.startswith(pdf_prefix) and pdf_file.endswith('.pdf'):
+                                    pdf_path = os.path.join('pdfs', pdf_file)
+                                    try:
+                                        os.remove(pdf_path)
+                                        files_deleted += 1
+                                    except Exception:
+                                        pass
                         
-                        # Delete generated PDF if exists
-                        pdf_patterns = [
-                            f"pdfs/{tech_id}_{uuid}.pdf"
-                            for uuid in os.listdir('pdfs')
-                            if tech_id in uuid and uuid.endswith('.pdf')
-                        ] if os.path.exists('pdfs') else []
-                        
-                        for pdf_path in pdf_patterns:
-                            if os.path.exists(pdf_path):
-                                try:
-                                    os.remove(pdf_path)
-                                    files_deleted += 1
-                                except Exception:
-                                    pass
-                        
-                        # Delete from database (this also deletes documents via CASCADE)
+                        # Delete from database (CASCADE deletes related documents)
                         database.delete_enrollment(enrollment_id)
                         deleted_count += 1
                         
@@ -261,29 +288,108 @@ def _enrollments_tab(enrollments):
                         st.error(f"Error deleting enrollment {enrollment_id}: {e}")
                 
                 if deleted_count > 0:
-                    st.success(f"✅ Deleted {deleted_count} enrollment(s) and {files_deleted} file(s)")
+                    st.success(f"✅ Successfully deleted {deleted_count} enrollment(s)")
                     st.rerun()
         
         with col2:
-            st.caption("This will permanently delete the selected enrollments and all associated files")
+            st.caption("⚠️ This will permanently delete the selected enrollments and all associated files")
 
     # -----------------------------
-    # Enrollment selector (unchanged)
+    # Photo Modal
+    # -----------------------------
+    if st.session_state.open_photos_for_id:
+        enrollment_id = st.session_state.open_photos_for_id
+
+        docs = database.get_documents_for_enrollment(enrollment_id)
+
+        vehicle = [d["file_path"] for d in docs if d["doc_type"] == "vehicle"]
+        registration = [d["file_path"] for d in docs if d["doc_type"] == "registration"]
+        insurance = [d["file_path"] for d in docs if d["doc_type"] == "insurance"]
+
+        # Modal overlay
+        st.markdown(
+            """
+            <style>
+            .modal-overlay {
+                position: fixed;
+                top: 0; left: 0;
+                width: 100vw;
+                height: 100vh;
+                background: rgba(0,0,0,0.75);
+                z-index: 9998;
+            }
+            .modal-container {
+                position: fixed;
+                top: 50%; 
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: white;
+                padding: 30px;
+                border-radius: 12px;
+                width: 85vw;
+                max-height: 85vh;
+                overflow-y: auto;
+                z-index: 9999;
+            }
+            </style>
+            <div class="modal-overlay"></div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        with st.container():
+            st.markdown("<div class='modal-container'>", unsafe_allow_html=True)
+
+            tabs = st.tabs(["🚗 Vehicle", "📄 Registration", "🛡️ Insurance"])
+            groups = [vehicle, registration, insurance]
+            labels = ["Vehicle", "Registration", "Insurance"]
+
+            for tab, paths, label in zip(tabs, groups, labels):
+                with tab:
+                    if paths:
+                        for i in range(0, len(paths), 3):
+                            cols = st.columns(3)
+                            for j, col in enumerate(cols):
+                                idx = i + j
+                                if idx < len(paths):
+                                    p = paths[idx]
+                                    if os.path.exists(p):
+                                        with col:
+                                            st.image(p, use_container_width=True)
+                                            st.caption(os.path.basename(p))
+                                    else:
+                                        with col:
+                                            st.error(f"Missing: {p}")
+                    else:
+                        st.info(f"No {label.lower()} photos found.")
+
+            # Close button
+            st.markdown("<br>", unsafe_allow_html=True)
+            c1, c2, c3 = st.columns([2,1,2])
+            with c2:
+                if st.button("Close", type="primary"):
+                    st.session_state.open_photos_for_id = None
+                    st.rerun()
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
+    # -----------------------------
+    # Footer: Enrollment Selector
     # -----------------------------
     st.markdown("---")
-    options = [f"#{e.get('id')} — {e.get('full_name')} ({e.get('tech_id')})" for e in enrollments]
-    selected_label = st.selectbox("Select enrollment for rule actions", options) if options else None
+    options = [
+        f"#{e.get('id')} — {e.get('full_name')} ({e.get('tech_id')})"
+        for e in enrollments
+    ]
+    sel_label = st.selectbox("Select enrollment for rule actions", options) if options else None
 
-    if selected_label:
+    if sel_label:
         try:
-            selected_id = int(selected_label.split('—')[0].strip('# ').strip())
-            st.session_state.selected_enrollment_id = selected_id
-        except Exception:
+            st.session_state.selected_enrollment_id = int(
+                sel_label.split("—")[0].strip("# ").strip()
+            )
+        except:
             st.session_state.selected_enrollment_id = None
-
-
-
-
 
 def _notifications_tab(enrollments, rules, sent):
     st.subheader("Notifications Log")
