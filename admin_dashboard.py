@@ -78,12 +78,19 @@ def _overview_tab(enrollments, rules, sent):
 
 
 def _enrollments_tab(enrollments):
+    from st_aggrid import AgGrid, GridOptionsBuilder
+    import pandas as pd
+    from datetime import datetime
+
     st.subheader("Enrollments")
+
     if not enrollments:
         st.info("No enrollments yet.")
         return
 
-    # Search & pagination state
+    # -----------------------------
+    # State (search, pagination, etc.)
+    # -----------------------------
     st.session_state.setdefault('ecc_search', '')
     st.session_state.setdefault('ecc_page', 0)
     st.session_state.setdefault('ecc_page_size', 10)
@@ -91,6 +98,9 @@ def _enrollments_tab(enrollments):
     st.session_state.setdefault('ecc_edit_id', None)
     st.session_state.setdefault('ecc_delete_id', None)
 
+    # -----------------------------
+    # Search
+    # -----------------------------
     q = st.text_input("Search (Name, Tech ID, VIN)", value=st.session_state.ecc_search)
     st.session_state.ecc_search = q
 
@@ -99,16 +109,20 @@ def _enrollments_tab(enrollments):
         if not q:
             filtered.append(r)
             continue
+        
         hay = ' '.join([str(r.get(k, '')).lower() for k in ('full_name', 'tech_id', 'vin')])
         if q.lower() in hay:
             filtered.append(r)
 
+    # -----------------------------
+    # Pagination
+    # -----------------------------
     total = len(filtered)
     page_size = st.session_state.ecc_page_size
     page = st.session_state.ecc_page
     max_page = max(0, (total - 1) // page_size)
 
-    cnav1, cnav2, cnav3 = st.columns([1,1,4])
+    cnav1, cnav2, cnav3 = st.columns([1, 1, 4])
     with cnav1:
         if st.button("◀ Prev", disabled=page <= 0):
             st.session_state.ecc_page = max(0, page - 1)
@@ -124,23 +138,18 @@ def _enrollments_tab(enrollments):
     end = start + page_size
     page_rows = filtered[start:end]
 
-    # Header
-    from st_aggrid import AgGrid, GridOptionsBuilder
-    import pandas as pd
-
-    # Convert page_rows (your list of dicts) into a DataFrame
+    # -----------------------------
+    # AG-Grid Table
+    # -----------------------------
     df = pd.DataFrame(page_rows)
 
-    # Format the submission date
+    # Format submission date
     if "submission_date" in df.columns:
-        def format_date(d):
-            try:
-                return datetime.fromisoformat(d).strftime("%m/%d/%Y") if d else ""
-            except Exception:
-                return d
-        df["submission_date"] = df["submission_date"].apply(format_date)
+        df["submission_date"] = df["submission_date"].apply(
+            lambda d: datetime.fromisoformat(d).strftime("%m/%d/%Y") if d else ""
+        )
 
-    # Build grid options
+    # Build grid
     gb = GridOptionsBuilder.from_dataframe(df)
     gb.configure_default_column(
         resizable=True,
@@ -148,14 +157,13 @@ def _enrollments_tab(enrollments):
         sortable=True,
     )
 
-    # Add pagination to match your existing UI
+    # Match pagination in Streamlit with pagination inside AG-Grid
     gb.configure_pagination(
         paginationAutoPageSize=False,
         paginationPageSize=page_size,
     )
 
-    # Render the grid
-    AgGrid(
+    grid = AgGrid(
         df,
         gridOptions=gb.build(),
         theme="alpine",
@@ -163,12 +171,14 @@ def _enrollments_tab(enrollments):
         allow_unsafe_jscode=True,
     )
 
-    # Enrollment selector for rule running
+    # -----------------------------
+    # Enrollment selector (unchanged)
+    # -----------------------------
     st.markdown("---")
-    options = [f"#{e.get('id')} — {e.get('full_name')} ({e.get('tech_id')})" for e in filtered]
+    options = [f"#{e.get('id')} — {e.get('full_name')} ({e.get('tech_id')})" for e in enrollments]
     selected_label = st.selectbox("Select enrollment for rule actions", options) if options else None
+
     if selected_label:
-        # Extract id from label
         try:
             selected_id = int(selected_label.split('—')[0].strip('# ').strip())
             st.session_state.selected_enrollment_id = selected_id
