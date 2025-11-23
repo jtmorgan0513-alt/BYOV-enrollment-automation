@@ -38,7 +38,7 @@ def send_email_notification(record, recipients=None, subject=None):
     else:
         recipient_list = [default_recipient] if default_recipient else []
 
-    subject = f"New BYOV Enrollment: {record.get('full_name','Unknown')} (Tech {record.get('tech_id','N/A')})"
+    subject = subject or f"New BYOV Enrollment: {record.get('full_name','Unknown')} (Tech {record.get('tech_id','N/A')})"
 
     industries_str = ", ".join(record.get('industries', [])) if record.get('industries') else "None"
 
@@ -55,30 +55,30 @@ A new BYOV enrollment has been submitted.
 
 TECHNICIAN INFORMATION
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Name:           {record.get('full_name','')}
-Tech ID:        {record.get('tech_id','')}
-District:       {record.get('district','')}
-State:          {record.get('state', 'N/A')}
-Referred By:    {record.get('referred_by', '')}
-Industries:     {industries_str}
+Name:               {record.get('full_name','')}
+Tech ID:            {record.get('tech_id','')}
+District:           {record.get('district','')}
+State:              {record.get('state', 'N/A')}
+Referred By:        {record.get('referred_by', '')}
+Industries:         {industries_str}
 
 VEHICLE INFORMATION
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Year:           {record.get('year','')}
-Make:           {record.get('make','')}
-Model:          {record.get('model','')}
-VIN:            {record.get('vin','')}
+Year:               {record.get('year','')}
+Make:               {record.get('make','')}
+Model:              {record.get('model','')}
+VIN:                {record.get('vin','')}
 
 DOCUMENTATION
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Insurance Exp:  {record.get('insurance_exp','')}
-Registration Exp: {record.get('registration_exp','')}
-Template Used:  {record.get('template_used', 'N/A')}
+Insurance Exp:      {record.get('insurance_exp','')}
+Registration Exp:   {record.get('registration_exp','')}
+Template Used:      {record.get('template_used', 'N/A')}
 
 FILES UPLOADED
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Vehicle Photos:       {len(record.get('vehicle_photos_paths', [])) if record.get('vehicle_photos_paths') else 0} files
-Insurance Documents:  {len(record.get('insurance_docs_paths', [])) if record.get('insurance_docs_paths') else 0} files
+Vehicle Photos:         {len(record.get('vehicle_photos_paths', [])) if record.get('vehicle_photos_paths') else 0} files
+Insurance Documents:    {len(record.get('insurance_docs_paths', [])) if record.get('insurance_docs_paths') else 0} files
 Registration Documents: {len(record.get('registration_docs_paths', [])) if record.get('registration_docs_paths') else 0} files
 
 ADDITIONAL NOTES
@@ -98,7 +98,7 @@ This is an automated notification from the BYOV Enrollment System.
     msg["From"] = sender or "no-reply@example.com"
     msg["To"] = ", ".join(recipient_list) if recipient_list else ""
     msg["Date"] = formatdate(localtime=True)
-    msg["Subject"] = subject or subject or f"New BYOV Enrollment: {record.get('full_name','Unknown')}"
+    msg["Subject"] = subject
     msg.attach(MIMEText(body, "plain"))
 
     # Collect file paths referenced in the record
@@ -171,3 +171,4 @@ This is an automated notification from the BYOV Enrollment System.
     except Exception as e:
         st.error(f"Email sending failed: {str(e)}")
         return False
+
