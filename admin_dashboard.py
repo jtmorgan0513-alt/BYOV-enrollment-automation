@@ -83,6 +83,7 @@ def _enrollments_tab(enrollments):
     from st_aggrid import AgGrid, GridOptionsBuilder
     import pandas as pd
     from datetime import datetime
+    import shutil
 
     st.subheader("Enrollments")
 
@@ -145,8 +146,9 @@ def _enrollments_tab(enrollments):
     # -----------------------------
     df = pd.DataFrame(page_rows)
 
-    # Remove unwanted columns
-    for col in ["id", "comment", "template_used"]:
+    # Keep the 'id' column for deletion tracking but move unwanted columns
+    columns_to_hide = ["comment", "template_used"]
+    for col in columns_to_hide:
         if col in df.columns:
             df.drop(columns=[col], inplace=True)
 
@@ -156,13 +158,24 @@ def _enrollments_tab(enrollments):
             lambda d: datetime.fromisoformat(d).strftime("%m/%d/%Y") if d else ""
         )
 
-    # Build grid
+    # Build grid with selection enabled
     gb = GridOptionsBuilder.from_dataframe(df)
     gb.configure_default_column(
         resizable=True,
         filter=True,
         sortable=True,
     )
+    
+    # Enable row selection with checkboxes
+    gb.configure_selection(
+        selection_mode='multiple',
+        use_checkbox=True,
+        header_checkbox=True,
+        pre_selected_rows=[]
+    )
+    
+    # Hide the 'id' column but keep it in data
+    gb.configure_column("id", hide=True)
 
     # Match pagination in Streamlit with pagination inside AG-Grid
     gb.configure_pagination(
@@ -176,7 +189,83 @@ def _enrollments_tab(enrollments):
         theme="alpine",
         fit_columns_on_grid_load=True,
         allow_unsafe_jscode=True,
+        update_mode='SELECTION_CHANGED'
     )
+    
+    # -----------------------------
+    # Delete Selected Enrollments
+    # -----------------------------
+    selected_rows = grid.get('selected_rows', [])
+    
+    if selected_rows is not None and len(selected_rows) > 0:
+        st.warning(f"⚠️ {len(selected_rows)} enrollment(s) selected")
+        
+        col1, col2 = st.columns([1, 5])
+        with col1:
+            if st.button("🗑️ Delete Selected", type="primary"):
+                deleted_count = 0
+                files_deleted = 0
+                
+                for selected in selected_rows:
+                    enrollment_id = selected.get('id')
+                    tech_id = selected.get('tech_id', 'unknown')
+                    
+                    try:
+                        # Get documents to find file paths
+                        docs = database.get_documents_for_enrollment(enrollment_id)
+                        
+                        # Delete uploaded files
+                        for doc in docs:
+                            file_path = doc.get('file_path')
+                            if file_path and os.path.exists(file_path):
+                                try:
+                                    os.remove(file_path)
+                                    files_deleted += 1
+                                except Exception:
+                                    pass
+                        
+                        # Delete upload directory for this enrollment
+                        upload_dirs = [
+                            f"uploads/{tech_id}_{uuid}" 
+                            for uuid in os.listdir('uploads') 
+                            if os.path.isdir(f"uploads/{uuid}") and tech_id in uuid
+                        ] if os.path.exists('uploads') else []
+                        
+                        for upload_dir in upload_dirs:
+                            if os.path.exists(upload_dir):
+                                try:
+                                    shutil.rmtree(upload_dir)
+                                except Exception:
+                                    pass
+                        
+                        # Delete generated PDF if exists
+                        pdf_patterns = [
+                            f"pdfs/{tech_id}_{uuid}.pdf"
+                            for uuid in os.listdir('pdfs')
+                            if tech_id in uuid and uuid.endswith('.pdf')
+                        ] if os.path.exists('pdfs') else []
+                        
+                        for pdf_path in pdf_patterns:
+                            if os.path.exists(pdf_path):
+                                try:
+                                    os.remove(pdf_path)
+                                    files_deleted += 1
+                                except Exception:
+                                    pass
+                        
+                        # Delete from database (this also deletes documents via CASCADE)
+                        database.delete_enrollment(enrollment_id)
+                        deleted_count += 1
+                        
+                    except Exception as e:
+                        st.error(f"Error deleting enrollment {enrollment_id}: {e}")
+                
+                if deleted_count > 0:
+                    st.success(f"✅ Deleted {deleted_count} enrollment(s) and {files_deleted} file(s)")
+                    st.rerun()
+        
+        with col2:
+            st.caption("This will permanently delete the selected enrollments and all associated files")
 
     # -----------------------------
     # Enrollment selector (unchanged)
