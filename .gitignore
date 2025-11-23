@@ -208,6 +208,7 @@ __marimo__/
 # Application artifacts
 /uploads/
 /pdfs/
+/data/
 enrollments.json
 secrets.toml
 
