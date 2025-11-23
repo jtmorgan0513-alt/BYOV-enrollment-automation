@@ -930,17 +930,18 @@ def wizard_step_4():
 
                 # Send default email notification only if enabled
                 email_sent = None
-                if st.session_state.get('submission_email_enabled', True):
+                email_enabled = st.session_state.get('submission_email_enabled', True)
+                if email_enabled:
                     email_sent = send_email_notification(record)
                     if email_sent:
-                        st.success("✅ Enrollment submitted successfully and email notification sent!")
+                        banner_msg = "✅ Enrollment submitted successfully and email notification sent!"
                     else:
-                        st.warning("✅ Enrollment saved, but email notification failed. Administrator has been notified.")
+                        banner_msg = "✅ Enrollment saved, but email notification failed. Administrator has been notified."
                 else:
-                    st.success("✅ Enrollment submitted successfully! (Email notification disabled)")
+                    banner_msg = "✅ Enrollment submitted successfully! (No email notification sent)"
 
                 # Evaluate DB-backed notification rules for "On Submission" only if enabled
-                if st.session_state.get('submission_email_enabled', True):
+                if email_enabled:
                     try:
                         rules = database.get_notification_rules()
                         sent_logs = database.get_sent_notifications(enrollment_db_id)
@@ -975,12 +976,12 @@ def wizard_step_4():
                 # Clear wizard data
                 st.session_state.wizard_data = {}
                 st.session_state.wizard_step = 1
-                
+
                 show_money_rain()
-                
-                # Show success message
+
+                # Show success message and banner
                 st.markdown("---")
-                st.success("🎉 Your BYOV enrollment has been submitted successfully!")
+                st.success(banner_msg)
                 
                 if st.button("Submit Another Enrollment"):
                     st.rerun()
