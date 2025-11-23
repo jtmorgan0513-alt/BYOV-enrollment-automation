@@ -55,6 +55,8 @@ def _overview_tab(enrollments, rules, sent):
     total_notifications = len(sent)
     storage_mode = "SQLite" if database.USE_SQLITE else "JSON Fallback"
 
+
+
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Enrollments", total_enrollments)
     c2.metric("Active Rules", active_rules)
@@ -192,6 +194,16 @@ def _enrollments_tab(enrollments):
 
 
 def _rules_tab(enrollments, rules):
+    # Toggle for submission email notification
+    st.markdown("---")
+    st.session_state.setdefault('submission_email_enabled', True)
+    submission_email_enabled = st.toggle(
+        "Enable Submission Email Notification",
+        value=st.session_state['submission_email_enabled'],
+        key="submission_email_enabled"
+    )
+    st.session_state['submission_email_enabled'] = submission_email_enabled
+
     st.subheader("Notification Rules")
 
     # Create new rule

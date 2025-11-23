@@ -928,45 +928,49 @@ def wizard_step_4():
                     "submission_date": datetime.now().isoformat()
                 }
 
-                # Send default email notification (keeps backwards compatibility)
-                email_sent = send_email_notification(record)
-
-                if email_sent:
-                    st.success("✅ Enrollment submitted successfully and email notification sent!")
+                # Send default email notification only if enabled
+                email_sent = None
+                if st.session_state.get('submission_email_enabled', True):
+                    email_sent = send_email_notification(record)
+                    if email_sent:
+                        st.success("✅ Enrollment submitted successfully and email notification sent!")
+                    else:
+                        st.warning("✅ Enrollment saved, but email notification failed. Administrator has been notified.")
                 else:
-                    st.warning("✅ Enrollment saved, but email notification failed. Administrator has been notified.")
+                    st.success("✅ Enrollment submitted successfully! (Email notification disabled)")
 
-                # Evaluate DB-backed notification rules for "On Submission"
-                try:
-                    rules = database.get_notification_rules()
-                    sent_logs = database.get_sent_notifications(enrollment_db_id)
-                    sent_rule_ids = {s.get('rule_id') for s in sent_logs}
+                # Evaluate DB-backed notification rules for "On Submission" only if enabled
+                if st.session_state.get('submission_email_enabled', True):
+                    try:
+                        rules = database.get_notification_rules()
+                        sent_logs = database.get_sent_notifications(enrollment_db_id)
+                        sent_rule_ids = {s.get('rule_id') for s in sent_logs}
 
-                    for rule in rules:
-                        # rule: dict with keys id, rule_name, trigger, days_before, recipients, enabled
-                        if not rule.get('enabled'):
-                            continue
-                        if rule.get('trigger') != 'On Submission':
-                            continue
+                        for rule in rules:
+                            # rule: dict with keys id, rule_name, trigger, days_before, recipients, enabled
+                            if not rule.get('enabled'):
+                                continue
+                            if rule.get('trigger') != 'On Submission':
+                                continue
 
-                        rid = rule.get('id')
-                        if rid in sent_rule_ids:
-                            # already sent for this enrollment, skip
-                            continue
+                            rid = rule.get('id')
+                            if rid in sent_rule_ids:
+                                # already sent for this enrollment, skip
+                                continue
 
-                        recipients = rule.get('recipients') or []
-                        subject = f"{rule.get('rule_name', 'BYOV Notification')}"
+                            recipients = rule.get('recipients') or []
+                            subject = f"{rule.get('rule_name', 'BYOV Notification')}"
 
-                        try:
-                            ok = send_email_notification(record, recipients=recipients, subject=subject)
-                            if ok:
-                                database.log_notification_sent(enrollment_db_id, rid)
-                        except Exception:
-                            # Don't allow rule send failures to interrupt the user flow
-                            pass
-                except Exception:
-                    # Non-fatal: if rules evaluation fails, continue
-                    pass
+                            try:
+                                ok = send_email_notification(record, recipients=recipients, subject=subject)
+                                if ok:
+                                    database.log_notification_sent(enrollment_db_id, rid)
+                            except Exception:
+                                # Don't allow rule send failures to interrupt the user flow
+                                pass
+                    except Exception:
+                        # Non-fatal: if rules evaluation fails, continue
+                        pass
                 
                 # Clear wizard data
                 st.session_state.wizard_data = {}
