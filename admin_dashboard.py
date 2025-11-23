@@ -140,6 +140,10 @@ def _enrollments_tab(enrollments):
         cols[4].write(rec.get('state',''))
         cols[5].write(rec.get('vin',''))
         cols[6].write(rec.get('year',''))
+        cols[7].write(rec.get('make',''))
+        cols[8].write(rec.get('model',''))
+              
+
 
     # Enrollment selector for rule running
     st.markdown("---")
