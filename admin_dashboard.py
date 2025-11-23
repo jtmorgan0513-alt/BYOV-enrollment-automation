@@ -144,7 +144,7 @@ def _enrollments_tab(enrollments):
     df = pd.DataFrame(page_rows)
 
     # Remove unwanted columns
-    for col in ["comment", "template_used"]:
+    for col in ["id", "comment", "template_used"]:
         if col in df.columns:
             df.drop(columns=[col], inplace=True)
 
