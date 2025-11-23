@@ -484,6 +484,12 @@ def wizard_step_1():
         value=data.get('district', ''),
         key="wiz_district"
     )
+
+    referred_by = st.text_input(
+        "Referred By",
+        value=data.get('referred_by', ''),
+        key="wiz_referred_by"
+    )
     
     state_idx = 0
     saved_state = data.get('state')
@@ -538,6 +544,7 @@ def wizard_step_1():
             'tech_id': tech_id,
             'district': district,
             'state': state,
+            'referred_by': referred_by,
             'industries': selected_industries
         })
         st.session_state.wizard_step = 2
@@ -874,6 +881,7 @@ def wizard_step_4():
         with col2:
             st.write(f"**District:** {data.get('district', 'N/A')}")
             st.write(f"**State:** {data.get('state', 'N/A')}")
+            st.write(f"**Referred By:** {data.get('referred_by', 'N/A')}")
     
     # Industries
     st.markdown("---")
