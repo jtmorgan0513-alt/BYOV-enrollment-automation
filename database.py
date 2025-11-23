@@ -22,87 +22,105 @@ DB_PATH = os.path.join(DATA_DIR, "byov.db")
 # ============================================================
 def init_db():
     """Creates the database directory and tables if they don't exist."""
-    if not os.path.exists(DATA_DIR):
-        os.makedirs(DATA_DIR)
+    try:
+        if not os.path.exists(DATA_DIR):
+            os.makedirs(DATA_DIR, exist_ok=True)
 
-    if USE_SQLITE and sqlite3 is not None:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
+        if USE_SQLITE and sqlite3 is not None:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
 
-        # Create enrollments table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS enrollments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                full_name TEXT NOT NULL,
-                tech_id TEXT NOT NULL,
-                district TEXT,
-                state TEXT,
-                referred_by TEXT,
-                industries TEXT,
-                year TEXT,
-                make TEXT,
-                model TEXT,
-                vin TEXT,
-                insurance_exp TEXT,
-                registration_exp TEXT,
-                template_used TEXT,
-                comment TEXT,
-                submission_date TEXT DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+            # Create enrollments table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS enrollments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    full_name TEXT NOT NULL,
+                    tech_id TEXT NOT NULL,
+                    district TEXT,
+                    state TEXT,
+                    referred_by TEXT,
+                    industries TEXT,
+                    year TEXT,
+                    make TEXT,
+                    model TEXT,
+                    vin TEXT,
+                    insurance_exp TEXT,
+                    registration_exp TEXT,
+                    template_used TEXT,
+                    comment TEXT,
+                    submission_date TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
 
-        # Create documents table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS documents (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                enrollment_id INTEGER NOT NULL,
-                doc_type TEXT NOT NULL,
-                file_path TEXT NOT NULL,
-                FOREIGN KEY(enrollment_id) REFERENCES enrollments(id)
-                    ON DELETE CASCADE
-            )
-        """)
+            # Create documents table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS documents (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    enrollment_id INTEGER NOT NULL,
+                    doc_type TEXT NOT NULL,
+                    file_path TEXT NOT NULL,
+                    FOREIGN KEY(enrollment_id) REFERENCES enrollments(id)
+                        ON DELETE CASCADE
+                )
+            """)
 
-        # Create notification rules table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS notification_rules (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                rule_name TEXT NOT NULL,
-                trigger TEXT NOT NULL,
-                days_before INTEGER,
-                recipients TEXT NOT NULL,
-                enabled INTEGER DEFAULT 1
-            )
-        """)
+            # Create notification rules table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS notification_rules (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    rule_name TEXT NOT NULL,
+                    trigger TEXT NOT NULL,
+                    days_before INTEGER,
+                    recipients TEXT NOT NULL,
+                    enabled INTEGER DEFAULT 1
+                )
+            """)
 
-        # Create notifications_sent table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS notifications_sent (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                enrollment_id INTEGER NOT NULL,
-                rule_id INTEGER NOT NULL,
-                sent_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(enrollment_id) REFERENCES enrollments(id),
-                FOREIGN KEY(rule_id) REFERENCES notification_rules(id)
-            )
-        """)
+            # Create notifications_sent table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS notifications_sent (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    enrollment_id INTEGER NOT NULL,
+                    rule_id INTEGER NOT NULL,
+                    sent_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(enrollment_id) REFERENCES enrollments(id),
+                    FOREIGN KEY(rule_id) REFERENCES notification_rules(id)
+                )
+            """)
 
-        conn.commit()
-        conn.close()
-    else:
-        # Fallback: ensure a JSON-backed store exists so importing the module
-        # doesn't raise on environments without sqlite3.
-        FALLBACK_FILE = os.path.join(DATA_DIR, "fallback_store.json")
-        if not os.path.exists(FALLBACK_FILE):
-            store = {
-                "enrollments": [],
-                "documents": [],
-                "notification_rules": [],
-                "notifications_sent": [],
-                "counters": {"enrollment_id": 0, "document_id": 0, "rule_id": 0, "sent_id": 0}
-            }
-            with open(FALLBACK_FILE, 'w', encoding='utf-8') as f:
-                json.dump(store, f, indent=2)
+            conn.commit()
+            conn.close()
+        else:
+            # Fallback: ensure a JSON-backed store exists so importing the module
+            # doesn't raise on environments without sqlite3.
+            FALLBACK_FILE = os.path.join(DATA_DIR, "fallback_store.json")
+            if not os.path.exists(FALLBACK_FILE):
+                store = {
+                    "enrollments": [],
+                    "documents": [],
+                    "notification_rules": [],
+                    "notifications_sent": [],
+                    "counters": {"enrollment_id": 0, "document_id": 0, "rule_id": 0, "sent_id": 0}
+                }
+                with open(FALLBACK_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(store, f, indent=2)
+    except Exception as e:
+        print(f"Error initializing database: {e}")
+        # Try to create fallback store
+        try:
+            FALLBACK_FILE = os.path.join(DATA_DIR, "fallback_store.json")
+            if not os.path.exists(FALLBACK_FILE):
+                store = {
+                    "enrollments": [],
+                    "documents": [],
+                    "notification_rules": [],
+                    "notifications_sent": [],
+                    "counters": {"enrollment_id": 0, "document_id": 0, "rule_id": 0, "sent_id": 0}
+                }
+                with open(FALLBACK_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(store, f, indent=2)
+        except:
+            pass
 
 
 # Initialize DB as soon as the module is imported
@@ -184,26 +202,35 @@ def insert_enrollment(record):
 def get_all_enrollments():
     """Return all enrollments as list[dict]."""
     if USE_SQLITE and sqlite3 is not None:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
+        try:
+            # Ensure database is initialized
+            init_db()
+            
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
 
-        cursor.execute("SELECT * FROM enrollments ORDER BY submission_date DESC")
-        rows = cursor.fetchall()
+            cursor.execute("SELECT * FROM enrollments ORDER BY submission_date DESC")
+            rows = cursor.fetchall()
 
-        columns = [col[0] for col in cursor.description]
-        conn.close()
+            columns = [col[0] for col in cursor.description]
+            conn.close()
 
-        results = []
-        for row in rows:
-            r = dict(zip(columns, row))
-            if r.get("industries"):
-                try:
-                    r["industries"] = json.loads(r["industries"])
-                except:
-                    r["industries"] = []
-            results.append(r)
+            results = []
+            for row in rows:
+                r = dict(zip(columns, row))
+                if r.get("industries"):
+                    try:
+                        r["industries"] = json.loads(r["industries"])
+                    except:
+                        r["industries"] = []
+                results.append(r)
 
-        return results
+            return results
+        except Exception as e:
+            print(f"Database error in get_all_enrollments: {e}")
+            # Fallback to JSON store if database fails
+            store = _load_store()
+            return store.get('enrollments', [])
     else:
         store = _load_store()
         return store.get('enrollments', [])
