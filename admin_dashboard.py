@@ -133,7 +133,14 @@ def _enrollments_tab(enrollments):
     for rec in page_rows:
         cols = st.columns([1, 1, 1, 1, 1, 1, 1, 1, 1 ])
         submission = rec.get('submission_date','')
-        cols[0].write(submission)
+        # Format submission date to MM/DD/YYYY
+        formatted_date = submission
+        try:
+            if submission:
+                formatted_date = datetime.fromisoformat(submission).strftime("%m/%d/%Y")
+        except Exception:
+            pass
+        cols[0].write(formatted_date)
         cols[1].write(rec.get('full_name',''))
         cols[2].write(rec.get('tech_id',''))
         cols[3].write(rec.get('district',''))
