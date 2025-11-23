@@ -125,36 +125,47 @@ def _enrollments_tab(enrollments):
     page_rows = filtered[start:end]
 
     # Header
-    hdr = st.columns([1, 1, 1, 1, 1, 1, 1, 1, 1])
-    headers = ["Date", "Name", "Tech ID", "District", "State", "VIN", "Year", "Make", "Model"]
-    for col, h in zip(hdr, headers):
-        col.markdown(f"**{h}**")
+    from st_aggrid import AgGrid, GridOptionsBuilder
+    import pandas as pd
 
-    for rec in page_rows:
-        cols = st.columns([1, 1, 1, 1, 1, 1, 1, 1, 1 ])
-        submission = rec.get('submission_date','')
-        # Format submission date to MM/DD/YYYY
-        formatted_date = submission
-        try:
-            if submission:
-                formatted_date = datetime.fromisoformat(submission).strftime("%m/%d/%Y")
-        except Exception:
-            pass
-        cols[0].write(formatted_date)
-        cols[1].write(rec.get('full_name',''))
-        cols[2].write(rec.get('tech_id',''))
-        cols[3].write(rec.get('district',''))
-        cols[4].write(rec.get('state',''))
-        cols[5].write(rec.get('vin',''))
-        cols[6].write(rec.get('year',''))
-        cols[7].write(rec.get('make',''))
-        cols[8].write(rec.get('model',''))
-              
+    # Convert page_rows (your list of dicts) into a DataFrame
+    df = pd.DataFrame(page_rows)
 
+    # Format the submission date
+    if "submission_date" in df.columns:
+        def format_date(d):
+            try:
+                return datetime.fromisoformat(d).strftime("%m/%d/%Y") if d else ""
+            except Exception:
+                return d
+        df["submission_date"] = df["submission_date"].apply(format_date)
+
+    # Build grid options
+    gb = GridOptionsBuilder.from_dataframe(df)
+    gb.configure_default_column(
+        resizable=True,
+        filter=True,
+        sortable=True,
+    )
+
+    # Add pagination to match your existing UI
+    gb.configure_pagination(
+        paginationAutoPageSize=False,
+        paginationPageSize=page_size,
+    )
+
+    # Render the grid
+    AgGrid(
+        df,
+        gridOptions=gb.build(),
+        theme="alpine",
+        fit_columns_on_grid_load=True,
+        allow_unsafe_jscode=True,
+    )
 
     # Enrollment selector for rule running
     st.markdown("---")
-    options = [f"#{e.get('id')} — {e.get('full_name')} ({e.get('tech_id')})" for e in enrollments]
+    options = [f"#{e.get('id')} — {e.get('full_name')} ({e.get('tech_id')})" for e in filtered]
     selected_label = st.selectbox("Select enrollment for rule actions", options) if options else None
     if selected_label:
         # Extract id from label
