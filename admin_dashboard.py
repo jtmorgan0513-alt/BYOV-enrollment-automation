@@ -125,13 +125,13 @@ def _enrollments_tab(enrollments):
     page_rows = filtered[start:end]
 
     # Header
-    hdr = st.columns([1.5, 2.2, 1.6, 1.2, 1.1, 1.6, 1])
-    headers = ["Date", "Name", "Tech ID", "District", "State", "VIN", "Year"]
+    hdr = st.columns([1, 1, 1, 1, 1, 1, 1, 1, 1])
+    headers = ["Date", "Name", "Tech ID", "District", "State", "VIN", "Year", "Make", "Model"]
     for col, h in zip(hdr, headers):
         col.markdown(f"**{h}**")
 
     for rec in page_rows:
-        cols = st.columns([1.5, 2.2, 1.6, 1.2, 1.1, 1.6, 1])
+        cols = st.columns([1, 1, 1, 1, 1, 1, 1, 1, 1 ])
         submission = rec.get('submission_date','')
         cols[0].write(submission)
         cols[1].write(rec.get('full_name',''))
