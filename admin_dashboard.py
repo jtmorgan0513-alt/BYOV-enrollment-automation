@@ -391,26 +391,6 @@ def _enrollments_tab(enrollments):
         except:
             st.session_state.selected_enrollment_id = None
 
-def _notifications_tab(enrollments, rules, sent):
-    st.subheader("Notifications Log")
-    if not sent:
-        st.info("No notifications logged yet.")
-        return
-    rule_lookup = {r.get('id'): r.get('rule_name') for r in rules}
-    enroll_lookup = {e.get('id'): e for e in enrollments}
-
-    # Simple table
-    for n in sent:
-        rname = rule_lookup.get(n.get('rule_id'), f"Rule {n.get('rule_id')}")
-        enroll = enroll_lookup.get(n.get('enrollment_id'))
-        tech = enroll.get('tech_id') if enroll else 'N/A'
-        fname = enroll.get('full_name') if enroll else 'Unknown'
-        st.write(f"• {n.get('sent_at','')} — {rname} → {fname} ({tech})")
-
-    if st.button("Refresh Log"):
-        st.rerun()
-
-
 # ------------------------------------------------------------
 # Entry Point
 # ------------------------------------------------------------
@@ -423,14 +403,12 @@ def page_admin_control_center():
     rules = database.get_notification_rules()
     sent = _get_all_sent_notifications()
 
-    tabs = st.tabs(["Overview", "Enrollments", "Notifications Log"])
+    tabs = st.tabs(["Overview", "Enrollments"])
 
     with tabs[0]:
         _overview_tab(enrollments, rules, sent)
     with tabs[1]:
         _enrollments_tab(enrollments)
-    with tabs[2]:
-        _notifications_tab(enrollments, rules, sent)
 
     st.markdown("---")
     st.caption("Select an enrollment in the Enrollments tab before running a rule.")
