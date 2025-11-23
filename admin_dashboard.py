@@ -70,44 +70,6 @@ def _enrollments_tab(enrollments):
     import pandas as pd
 
     st.subheader("Enrollments")
-    
-    # Add CSS for grid table styling
-    st.markdown("""
-    <style>
-    .enrollment-table-header {
-        display: grid;
-        grid-template-columns: 0.5fr 1.5fr 0.8fr 0.8fr 1.2fr 1.0fr 0.6fr 0.6fr 0.6fr;
-        gap: 8px;
-        padding: 12px;
-        background: #f0f2f6;
-        border: 1px solid #d0d0d0;
-        border-radius: 4px 4px 0 0;
-        font-weight: 600;
-        margin-top: 20px;
-    }
-    .enrollment-row {
-        display: grid;
-        grid-template-columns: 0.5fr 1.5fr 0.8fr 0.8fr 1.2fr 1.0fr 0.6fr 0.6fr 0.6fr;
-        gap: 8px;
-        padding: 12px;
-        border: 1px solid #e0e0e0;
-        border-top: none;
-        background: white;
-        align-items: center;
-    }
-    .enrollment-row:hover {
-        background: #f8f9fa;
-    }
-    .enrollment-row:last-child {
-        border-radius: 0 0 4px 4px;
-    }
-    .enrollment-cell {
-        padding: 4px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    </style>
-    """, unsafe_allow_html=True)
 
     # -----------------------------
     # No enrollments
@@ -168,28 +130,10 @@ def _enrollments_tab(enrollments):
     page_rows = filtered[start:end]
 
     # -----------------------------
-    # Table Header
+    # Build DataFrame for Display
     # -----------------------------
-    st.markdown("""
-    <div class="enrollment-table-header">
-        <div>ID</div>
-        <div>Name</div>
-        <div>Tech ID</div>
-        <div>District</div>
-        <div>Industries</div>
-        <div>Vehicle</div>
-        <div>📸</div>
-        <div>✓</div>
-        <div>🗑️</div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # -----------------------------
-    # Render Rows with Inline Buttons
-    # -----------------------------
+    display_rows = []
     for row in page_rows:
-        enrollment_id = row.get('id')
-        
         # Transform industries to comma-separated string
         industries_raw = row.get('industries', [])
         if isinstance(industries_raw, list):
@@ -198,109 +142,124 @@ def _enrollments_tab(enrollments):
             industries_str = str(industries_raw)
         
         # Format vehicle info
-        vehicle_info = f"{row.get('year', '')} {row.get('make', '')} {row.get('model', '')}"
+        vehicle_info = f"{row.get('year', '')} {row.get('make', '')} {row.get('model', '')}".strip()
         
-        # Start row container
-        st.markdown('<div class="enrollment-row">', unsafe_allow_html=True)
+        display_rows.append({
+            'ID': row.get('id'),
+            'Name': row.get('full_name', 'N/A'),
+            'Tech ID': row.get('tech_id', 'N/A'),
+            'District': row.get('district', 'N/A'),
+            'Industries': industries_str,
+            'Vehicle': vehicle_info
+        })
+    
+    # Display table with dataframe
+    if display_rows:
+        df = pd.DataFrame(display_rows)
+        st.dataframe(df, use_container_width=True, hide_index=True)
         
-        # Create row columns
-        cols = st.columns([0.5, 1.5, 0.8, 0.8, 1.2, 1.0, 0.6, 0.6, 0.6])
+        st.markdown("---")
+        st.subheader("Actions")
         
-        # Data columns
-        cols[0].markdown(f'<div class="enrollment-cell">{enrollment_id}</div>', unsafe_allow_html=True)
-        cols[1].markdown(f'<div class="enrollment-cell">{row.get("full_name", "N/A")}</div>', unsafe_allow_html=True)
-        cols[2].markdown(f'<div class="enrollment-cell">{row.get("tech_id", "N/A")}</div>', unsafe_allow_html=True)
-        cols[3].markdown(f'<div class="enrollment-cell">{row.get("district", "N/A")}</div>', unsafe_allow_html=True)
-        cols[4].markdown(f'<div class="enrollment-cell">{industries_str}</div>', unsafe_allow_html=True)
-        cols[5].markdown(f'<div class="enrollment-cell">{vehicle_info}</div>', unsafe_allow_html=True)
-        
-        # Action buttons
-        with cols[6]:
-            if st.button("📸", key=f"view_photos_{enrollment_id}", help="View Photos"):
-                st.session_state.open_photos_for_id = enrollment_id
-                st.rerun()
-        
-        with cols[7]:
-            is_selected = enrollment_id in st.session_state.selected_enrollment_ids
-            btn_label = "✅" if is_selected else "⭘"
-            btn_type = "primary" if is_selected else "secondary"
-            if st.button(btn_label, key=f"select_{enrollment_id}", type=btn_type, help="Select for Export"):
-                if is_selected:
-                    st.session_state.selected_enrollment_ids.discard(enrollment_id)
-                else:
-                    st.session_state.selected_enrollment_ids.add(enrollment_id)
-                st.rerun()
-        
-        with cols[8]:
-            # Two-click delete confirmation
-            is_confirming = st.session_state.delete_confirm.get(enrollment_id, False)
-            btn_label = "⚠️" if is_confirming else "🗑️"
-            btn_type = "primary" if is_confirming else "secondary"
+        # -----------------------------
+        # Action Buttons for Each Row
+        # -----------------------------
+        for row in page_rows:
+            enrollment_id = row.get('id')
+            row_name = f"{row.get('full_name', 'N/A')} (Tech ID: {row.get('tech_id', 'N/A')})"
             
-            if st.button(btn_label, key=f"delete_{enrollment_id}", type=btn_type, help="Delete (click twice)"):
-                if is_confirming:
-                    # Second click - execute delete
-                    try:
-                        tech_id = row.get('tech_id', 'unknown')
-                        
-                        # Get documents
-                        docs = database.get_documents_for_enrollment(enrollment_id)
-                        
-                        # Delete files
-                        for doc in docs:
-                            file_path = doc.get('file_path')
-                            if file_path and os.path.exists(file_path):
-                                try:
-                                    os.remove(file_path)
-                                except Exception:
-                                    pass
-                        
-                        # Delete upload folder
-                        if os.path.exists('uploads'):
-                            upload_folder_prefix = f"{tech_id}_"
-                            for folder in os.listdir('uploads'):
-                                if folder.startswith(upload_folder_prefix):
-                                    folder_path = os.path.join('uploads', folder)
-                                    if os.path.isdir(folder_path):
+            with st.container():
+                st.markdown(f"**Enrollment #{enrollment_id}** — {row_name}")
+                
+                cols = st.columns([1, 1, 1, 6])
+                
+                # View Photos button
+                with cols[0]:
+                    if st.button("📸 View Photos", key=f"view_photos_{enrollment_id}", use_container_width=True):
+                        st.session_state.open_photos_for_id = enrollment_id
+                        st.rerun()
+                
+                # Select button
+                with cols[1]:
+                    is_selected = enrollment_id in st.session_state.selected_enrollment_ids
+                    btn_label = "✅ Selected" if is_selected else "⭘ Select"
+                    btn_type = "primary" if is_selected else "secondary"
+                    if st.button(btn_label, key=f"select_{enrollment_id}", type=btn_type, use_container_width=True):
+                        if is_selected:
+                            st.session_state.selected_enrollment_ids.discard(enrollment_id)
+                        else:
+                            st.session_state.selected_enrollment_ids.add(enrollment_id)
+                        st.rerun()
+                
+                # Delete button
+                with cols[2]:
+                    is_confirming = st.session_state.delete_confirm.get(enrollment_id, False)
+                    btn_label = "⚠️ Confirm" if is_confirming else "🗑️ Delete"
+                    
+                    if st.button(btn_label, key=f"delete_{enrollment_id}", type="secondary", use_container_width=True):
+                        if is_confirming:
+                            # Second click - execute delete
+                            try:
+                                tech_id = row.get('tech_id', 'unknown')
+                                
+                                # Get documents
+                                docs = database.get_documents_for_enrollment(enrollment_id)
+                                
+                                # Delete files
+                                for doc in docs:
+                                    file_path = doc.get('file_path')
+                                    if file_path and os.path.exists(file_path):
                                         try:
-                                            shutil.rmtree(folder_path, ignore_errors=True)
+                                            os.remove(file_path)
                                         except Exception:
                                             pass
-                        
-                        # Delete PDF
-                        if os.path.exists('pdfs'):
-                            pdf_prefix = f"{tech_id}_"
-                            for pdf_file in os.listdir('pdfs'):
-                                if pdf_file.startswith(pdf_prefix) and pdf_file.endswith('.pdf'):
-                                    pdf_path = os.path.join('pdfs', pdf_file)
-                                    try:
-                                        os.remove(pdf_path)
-                                    except Exception:
-                                        pass
-                        
-                        # Delete from database
-                        database.delete_enrollment(enrollment_id)
-                        
-                        # Clear confirmation state
-                        st.session_state.delete_confirm.pop(enrollment_id, None)
-                        st.success(f"✅ Deleted enrollment {enrollment_id}")
-                        st.rerun()
-                        
-                    except Exception as e:
-                        st.error(f"Error deleting enrollment {enrollment_id}: {e}")
-                else:
-                    # First click - set confirmation
-                    st.session_state.delete_confirm[enrollment_id] = True
-                    st.rerun()
-        
-        st.markdown('</div>', unsafe_allow_html=True)
+                                
+                                # Delete upload folder
+                                if os.path.exists('uploads'):
+                                    upload_folder_prefix = f"{tech_id}_"
+                                    for folder in os.listdir('uploads'):
+                                        if folder.startswith(upload_folder_prefix):
+                                            folder_path = os.path.join('uploads', folder)
+                                            if os.path.isdir(folder_path):
+                                                try:
+                                                    shutil.rmtree(folder_path, ignore_errors=True)
+                                                except Exception:
+                                                    pass
+                                
+                                # Delete PDF
+                                if os.path.exists('pdfs'):
+                                    pdf_prefix = f"{tech_id}_"
+                                    for pdf_file in os.listdir('pdfs'):
+                                        if pdf_file.startswith(pdf_prefix) and pdf_file.endswith('.pdf'):
+                                            pdf_path = os.path.join('pdfs', pdf_file)
+                                            try:
+                                                os.remove(pdf_path)
+                                            except Exception:
+                                                pass
+                                
+                                # Delete from database
+                                database.delete_enrollment(enrollment_id)
+                                
+                                # Clear confirmation state
+                                st.session_state.delete_confirm.pop(enrollment_id, None)
+                                st.success(f"✅ Deleted enrollment {enrollment_id}")
+                                st.rerun()
+                                
+                            except Exception as e:
+                                st.error(f"Error deleting enrollment {enrollment_id}: {e}")
+                        else:
+                            # First click - set confirmation
+                            st.session_state.delete_confirm[enrollment_id] = True
+                            st.rerun()
+                
+                st.markdown("---")
     
     # Show selected count
     if st.session_state.selected_enrollment_ids:
         st.info(f"🔵 {len(st.session_state.selected_enrollment_ids)} enrollment(s) selected for export")
 
     # -----------------------------
-    # Photo Modal
+    # Photo Modal (Displayed at Bottom)
     # -----------------------------
     if st.session_state.open_photos_for_id:
         enrollment_id = st.session_state.open_photos_for_id
@@ -311,72 +270,46 @@ def _enrollments_tab(enrollments):
         registration = [d["file_path"] for d in docs if d["doc_type"] == "registration"]
         insurance = [d["file_path"] for d in docs if d["doc_type"] == "insurance"]
 
-        # Modal overlay
-        st.markdown(
-            """
-            <style>
-            .modal-overlay {
-                position: fixed;
-                top: 0; left: 0;
-                width: 100vw;
-                height: 100vh;
-                background: rgba(0,0,0,0.75);
-                z-index: 9998;
-            }
-            .modal-container {
-                position: fixed;
-                top: 50%; 
-                left: 50%;
-                transform: translate(-50%, -50%);
-                background: white;
-                padding: 30px;
-                border-radius: 12px;
-                width: 85vw;
-                max-height: 85vh;
-                overflow-y: auto;
-                z-index: 9999;
-            }
-            </style>
-            <div class="modal-overlay"></div>
-            """,
-            unsafe_allow_html=True,
-        )
+        st.markdown("---")
+        st.markdown("### 📸 Photo Viewer")
+        
+        # Close button at top
+        col1, col2 = st.columns([6, 1])
+        with col2:
+            if st.button("✖ Close", key=f"close_modal_top_{enrollment_id}", type="primary"):
+                st.session_state.open_photos_for_id = None
+                st.rerun()
 
-        with st.container():
-            st.markdown("<div class='modal-container'>", unsafe_allow_html=True)
+        tabs = st.tabs(["🚗 Vehicle", "📄 Registration", "🛡️ Insurance"])
+        groups = [vehicle, registration, insurance]
+        labels = ["Vehicle", "Registration", "Insurance"]
 
-            tabs = st.tabs(["🚗 Vehicle", "📄 Registration", "🛡️ Insurance"])
-            groups = [vehicle, registration, insurance]
-            labels = ["Vehicle", "Registration", "Insurance"]
+        for tab, paths, label in zip(tabs, groups, labels):
+            with tab:
+                if paths:
+                    for i in range(0, len(paths), 3):
+                        cols = st.columns(3)
+                        for j, col in enumerate(cols):
+                            idx = i + j
+                            if idx < len(paths):
+                                p = paths[idx]
+                                if os.path.exists(p):
+                                    with col:
+                                        st.image(p, use_container_width=True)
+                                        st.caption(os.path.basename(p))
+                                else:
+                                    with col:
+                                        st.error(f"Missing: {p}")
+                else:
+                    st.info(f"No {label.lower()} photos found.")
 
-            for tab, paths, label in zip(tabs, groups, labels):
-                with tab:
-                    if paths:
-                        for i in range(0, len(paths), 3):
-                            cols = st.columns(3)
-                            for j, col in enumerate(cols):
-                                idx = i + j
-                                if idx < len(paths):
-                                    p = paths[idx]
-                                    if os.path.exists(p):
-                                        with col:
-                                            st.image(p, use_container_width=True)
-                                            st.caption(os.path.basename(p))
-                                    else:
-                                        with col:
-                                            st.error(f"Missing: {p}")
-                    else:
-                        st.info(f"No {label.lower()} photos found.")
-
-            # Close button
-            st.markdown("<br>", unsafe_allow_html=True)
-            c1, c2, c3 = st.columns([2,1,2])
-            with c2:
-                if st.button("Close", type="primary", key=f"close_modal_{enrollment_id}"):
-                    st.session_state.open_photos_for_id = None
-                    st.rerun()
-
-            st.markdown("</div>", unsafe_allow_html=True)
+        # Close button at bottom
+        st.markdown("---")
+        col1, col2, col3 = st.columns([4, 2, 4])
+        with col2:
+            if st.button("✖ Close Photo Viewer", key=f"close_modal_bottom_{enrollment_id}", type="primary", use_container_width=True):
+                st.session_state.open_photos_for_id = None
+                st.rerun()
 
     # -----------------------------
     # Footer: Enrollment Selector
