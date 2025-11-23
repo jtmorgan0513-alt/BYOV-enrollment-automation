@@ -1013,6 +1013,7 @@ def wizard_step_4():
                     "id": record_id,
                     "tech_id": data['tech_id'],
                     "full_name": data['full_name'],
+                    "referred_by": data.get('referred_by', ''),
                     "district": data['district'],
                     "state": data['state'],
                     "industries": data.get('industries', []),
