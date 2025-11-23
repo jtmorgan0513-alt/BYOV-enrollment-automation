@@ -16,8 +16,9 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 # AgGrid is optional; the admin dashboard uses a server-side table by default
 
-# Shared helpers moved to separate modules
-from data_store import load_enrollments, save_enrollments
+# Shared DB module (SQLite)
+import database
+from database import get_enrollment_by_id, get_documents_for_enrollment
 from notifications import send_email_notification
 
 
@@ -49,39 +50,56 @@ INDUSTRIES = ["Cook", "Dish", "Laundry", "Micro", "Ref", "HVAC", "L&G"]
 
 
 def load_enrollments():
-    if not os.path.exists(DATA_FILE):
-        return []
-    try:
-        with open(DATA_FILE, 'r') as f:
-            return json.load(f)
-    except Exception:
-        return []
+    """Compatibility loader: return enrollments enriched with document paths.
+
+    The application previously used a JSON file structure. The new
+    `database` module stores enrollments and documents separately; this
+    function adapts DB rows to the legacy record shape expected by the
+    rest of the app (including *_paths lists and `signature_pdf_path`).
+    """
+    rows = database.get_all_enrollments()
+    records = []
+    for r in rows:
+        rec = dict(r)  # copy
+        # populate documents
+        docs = database.get_documents_for_enrollment(rec.get('id'))
+        rec['vehicle_photos_paths'] = [d['file_path'] for d in docs if d['doc_type'] == 'vehicle']
+        rec['insurance_docs_paths'] = [d['file_path'] for d in docs if d['doc_type'] == 'insurance']
+        rec['registration_docs_paths'] = [d['file_path'] for d in docs if d['doc_type'] == 'registration']
+        sigs = [d['file_path'] for d in docs if d['doc_type'] == 'signature']
+        rec['signature_pdf_path'] = sigs[0] if sigs else None
+        # keep backward-compatible keys
+        records.append(rec)
+    return records
 
 
 def save_enrollments(records):
-    with open(DATA_FILE, 'w') as f:
-        json.dump(records, f, indent=2, default=str)
+    """Legacy no-op: new DB is authoritative. Kept for compatibility."""
+    return
 
 
-def delete_enrollment(tech_id: str) -> tuple[bool, str]:
+def delete_enrollment(identifier: str) -> tuple[bool, str]:
+    """Delete enrollment and associated files from DB and filesystem.
+
+    `identifier` may be the numeric enrollment id or the technician id.
+    """
     try:
-        records = load_enrollments()
-        identifier = str(tech_id)
-        record_to_delete = None
-        for record in records:
-            if str(record.get('tech_id', '')) == identifier or str(record.get('id', '')) == identifier:
-                record_to_delete = record
+        # Find enrollment by id or tech_id
+        rows = database.get_all_enrollments()
+        target = None
+        for r in rows:
+            if str(r.get('id')) == str(identifier) or str(r.get('tech_id', '')) == str(identifier):
+                target = r
                 break
 
-        if not record_to_delete:
-            return False, f"Record not found for Tech ID or ID: {tech_id}"
+        if not target:
+            return False, f"Record not found for Tech ID or ID: {identifier}"
 
-        # collect files
-        files_to_delete = []
-        files_to_delete.append(record_to_delete.get('signature_pdf_path'))
-        files_to_delete.extend(record_to_delete.get('vehicle_photos_paths', []))
-        files_to_delete.extend(record_to_delete.get('insurance_docs_paths', []))
-        files_to_delete.extend(record_to_delete.get('registration_docs_paths', []))
+        enrollment_id = target.get('id')
+
+        # collect file paths from documents
+        docs = database.get_documents_for_enrollment(enrollment_id)
+        files_to_delete = [d['file_path'] for d in docs if d.get('file_path')]
 
         deleted_files = 0
         for p in files_to_delete:
@@ -92,19 +110,19 @@ def delete_enrollment(tech_id: str) -> tuple[bool, str]:
                 except Exception:
                     pass
 
-        # delete parent upload folder if present
-        sig = record_to_delete.get('signature_pdf_path')
-        if sig:
-            upload_dir = os.path.dirname(os.path.dirname(sig))
+        # delete parent upload folder if present (assumes uploaded files in uploads/ID_*/...)
+        if files_to_delete:
+            upload_dir = os.path.dirname(os.path.dirname(files_to_delete[0]))
             if os.path.exists(upload_dir) and os.path.isdir(upload_dir):
                 try:
                     shutil.rmtree(upload_dir)
                 except Exception:
                     pass
 
-        records = [r for r in records if not (str(r.get('tech_id', '')) == identifier or str(r.get('id', '')) == identifier)]
-        save_enrollments(records)
-        return True, f"✅ Successfully deleted enrollment for Tech ID {tech_id} and {deleted_files} associated files."
+        # delete from DB (documents cascade)
+        database.delete_enrollment(enrollment_id)
+
+        return True, f"✅ Successfully deleted enrollment ID {enrollment_id} and {deleted_files} associated files."
     except Exception as e:
         return False, f"❌ Error deleting enrollment: {e}"
 
@@ -853,10 +871,40 @@ def wizard_step_4():
                     st.error("❌ PDF generation failed. Cannot submit enrollment. Please try again.")
                     return
                 
-                # Create enrollment record
-                records = load_enrollments()
+                # Create enrollment record in the database
+                db_record = {
+                    "full_name": data['full_name'],
+                    "tech_id": data['tech_id'],
+                    "district": data['district'],
+                    "state": data['state'],
+                    "referred_by": data.get('referred_by', ''),
+                    "industries": data.get('industries', []),
+                    "year": data['year'],
+                    "make": data['make'],
+                    "model": data['model'],
+                    "vin": data['vin'],
+                    "insurance_exp": str(data['insurance_exp']),
+                    "registration_exp": str(data['registration_exp']),
+                    "template_used": data['template_file'],
+                    "comment": data.get('comment', ''),
+                    "submission_date": datetime.now().isoformat()
+                }
+
+                enrollment_db_id = database.insert_enrollment(db_record)
+
+                # Store documents in DB and keep the filepaths for notification
+                for p in vehicle_paths:
+                    database.add_document(enrollment_db_id, 'vehicle', p)
+                for p in insurance_paths:
+                    database.add_document(enrollment_db_id, 'insurance', p)
+                for p in registration_paths:
+                    database.add_document(enrollment_db_id, 'registration', p)
+                # signed PDF
+                database.add_document(enrollment_db_id, 'signature', pdf_output_path)
+
+                # Build application-level record for notifications and UI
                 record = {
-                    "id": record_id,
+                    "id": enrollment_db_id,
                     "tech_id": data['tech_id'],
                     "full_name": data['full_name'],
                     "referred_by": data.get('referred_by', ''),
@@ -878,12 +926,10 @@ def wizard_step_4():
                     "registration_docs_paths": registration_paths,
                     "submission_date": datetime.now().isoformat()
                 }
-                records.append(record)
-                save_enrollments(records)
-                
+
                 # Send email notification
                 email_sent = send_email_notification(record)
-                
+
                 if email_sent:
                     st.success("✅ Enrollment submitted successfully and email notification sent!")
                 else:
