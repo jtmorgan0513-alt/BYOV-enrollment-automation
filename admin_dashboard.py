@@ -49,36 +49,21 @@ def _get_all_sent_notifications():
 # ------------------------------------------------------------
 # UI Components
 # ------------------------------------------------------------
-def _overview_tab(enrollments, rules, sent):
+def _overview_tab(enrollments):
     st.subheader("Overview")
 
     total_enrollments = len(enrollments)
-    active_rules = sum(1 for r in rules if r.get('enabled'))
-    total_notifications = len(sent)
     storage_mode = "SQLite" if database.USE_SQLITE else "JSON Fallback"
 
-
-
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Enrollments", total_enrollments)
-    
-    
-    
+    c1, c2 = st.columns(2)
+    c1.metric("Total Enrollments", total_enrollments)
+    c2.metric("Storage Mode", storage_mode)
 
     if not database.USE_SQLITE:
         st.warning("Running in JSON fallback storage mode. Some features may be limited.")
-
-    # Recent activity (last 5 notifications)
-    if sent:
-        st.markdown("### Recent Notifications")
-        recent = sent[:5]
-        rule_lookup = {r.get('id'): r.get('rule_name') for r in rules}
-        for n in recent:
-            rid = n.get('rule_id')
-            rname = rule_lookup.get(rid, f"Rule {rid}")
-            st.write(f"• {n.get('sent_at','')} — {rname} (Enrollment #{n.get('enrollment_id')})")
-    else:
-        st.info("No notifications have been sent yet.")
+    
+    st.markdown("---")
+    st.info("Use the Enrollments tab to view and manage all enrollments.")
 
 
 def _enrollments_tab(enrollments):
@@ -100,6 +85,8 @@ def _enrollments_tab(enrollments):
     st.session_state.setdefault("ecc_page", 0)
     st.session_state.setdefault("ecc_page_size", 10)
     st.session_state.setdefault("open_photos_for_id", None)
+    st.session_state.setdefault("selected_enrollment_ids", set())
+    st.session_state.setdefault("delete_confirm", {})
 
     # -----------------------------
     # Search
@@ -143,120 +130,85 @@ def _enrollments_tab(enrollments):
     page_rows = filtered[start:end]
 
     # -----------------------------
-    # DataFrame + formatting
+    # Table Header
     # -----------------------------
-    df = pd.DataFrame(page_rows)
-
-    # Add photos column for button renderer
-    df["photos"] = ""
-
-    if "submission_date" in df.columns:
-        df["submission_date"] = df["submission_date"].apply(
-            lambda d: datetime.fromisoformat(d).strftime("%m/%d/%Y") if d else ""
-        )
-
-    # -----------------------------
-    # AG-Grid Button Renderer
-    # -----------------------------
-    photo_btn_js = JsCode(
-        """
-        function(params) {
-            return `
-              <button 
-                style="
-                  background-color:#1e88e5;
-                  color:white;
-                  padding:4px 10px;
-                  border:none;
-                  border-radius:4px;
-                  cursor:pointer;
-                  font-weight:600;
-                ">
-                📸 View
-              </button>
-            `;
-        }
-        """
-    )
-
-    # -----------------------------
-    # Build Grid Options
-    # -----------------------------
-    gb = GridOptionsBuilder.from_dataframe(df)
-    gb.configure_default_column(resizable=True, filter=True, sortable=True)
-    gb.configure_selection("multiple", use_checkbox=True, header_checkbox=True)
-    gb.configure_column("id", hide=True)
+    st.markdown("---")
+    header_cols = st.columns([0.5, 1.5, 0.8, 0.8, 1.2, 1.0, 0.6, 0.6, 0.6])
+    headers = ["ID", "Name", "Tech ID", "District", "Industries", "Vehicle", "📸", "✓", "🗑️"]
+    for col, header in zip(header_cols, headers):
+        col.markdown(f"**{header}**")
     
-    # Hide unwanted columns
-    for col in ["comment", "template_used"]:
-        if col in df.columns:
-            gb.configure_column(col, hide=True)
-
-    # Add Photos action column
-    gb.configure_column(
-        "photos",
-        headerName="Photos",
-        cellRenderer=photo_btn_js,
-        width=120,
-        pinned="right",
-    )
-
-    gb.configure_pagination(False, page_size)
-
-    grid_resp = AgGrid(
-        df,
-        gridOptions=gb.build(),
-        allow_unsafe_jscode=True,
-        update_mode="SELECTION_CHANGED",
-        fit_columns_on_grid_load=True,
-        theme="alpine",
-    )
-
-    # -----------------------------
-    # Row click → Open modal
-    # -----------------------------
-    selected = grid_resp.get("selected_rows", [])
-    
-    # Check for single row selection to view photos
-    if selected and len(selected) == 1:
-        sel = selected[0]
-        # Only open modal if it's not already open for this enrollment
-        if st.session_state.open_photos_for_id != sel["id"]:
-            st.session_state.open_photos_for_id = sel["id"]
-            st.rerun()
+    st.markdown("---")
     
     # -----------------------------
-    # Delete Selected Enrollments
+    # Render Rows with Inline Buttons
     # -----------------------------
-    if selected and len(selected) > 0:
-        st.markdown("---")
-        st.warning(f"⚠️ {len(selected)} enrollment(s) selected")
+    for row in page_rows:
+        enrollment_id = row.get('id')
         
-        col1, col2 = st.columns([1, 5])
-        with col1:
-            if st.button("🗑️ Delete Selected", type="primary", key="delete_selected_btn"):
-                deleted_count = 0
-                files_deleted = 0
-                
-                for sel_row in selected:
-                    enrollment_id = sel_row.get('id')
-                    tech_id = sel_row.get('tech_id', 'unknown')
-                    
+        # Transform industries to comma-separated string
+        industries_raw = row.get('industries', [])
+        if isinstance(industries_raw, list):
+            industries_str = ", ".join(industries_raw) if industries_raw else "None"
+        else:
+            industries_str = str(industries_raw)
+        
+        # Format vehicle info
+        vehicle_info = f"{row.get('year', '')} {row.get('make', '')} {row.get('model', '')}"
+        
+        # Create row columns
+        cols = st.columns([0.5, 1.5, 0.8, 0.8, 1.2, 1.0, 0.6, 0.6, 0.6])
+        
+        # Data columns
+        cols[0].write(str(enrollment_id))
+        cols[1].write(row.get('full_name', 'N/A'))
+        cols[2].write(row.get('tech_id', 'N/A'))
+        cols[3].write(row.get('district', 'N/A'))
+        cols[4].write(industries_str)
+        cols[5].write(vehicle_info)
+        
+        # Action buttons
+        with cols[6]:
+            if st.button("📸", key=f"view_photos_{enrollment_id}", help="View Photos"):
+                st.session_state.open_photos_for_id = enrollment_id
+                st.rerun()
+        
+        with cols[7]:
+            is_selected = enrollment_id in st.session_state.selected_enrollment_ids
+            btn_label = "✅" if is_selected else "⭘"
+            btn_type = "primary" if is_selected else "secondary"
+            if st.button(btn_label, key=f"select_{enrollment_id}", type=btn_type, help="Select for Export"):
+                if is_selected:
+                    st.session_state.selected_enrollment_ids.discard(enrollment_id)
+                else:
+                    st.session_state.selected_enrollment_ids.add(enrollment_id)
+                st.rerun()
+        
+        with cols[8]:
+            # Two-click delete confirmation
+            is_confirming = st.session_state.delete_confirm.get(enrollment_id, False)
+            btn_label = "⚠️" if is_confirming else "🗑️"
+            btn_type = "primary" if is_confirming else "secondary"
+            
+            if st.button(btn_label, key=f"delete_{enrollment_id}", type=btn_type, help="Delete (click twice)"):
+                if is_confirming:
+                    # Second click - execute delete
                     try:
-                        # Get documents to find file paths
+                        tech_id = row.get('tech_id', 'unknown')
+                        
+                        # Get documents
                         docs = database.get_documents_for_enrollment(enrollment_id)
                         
-                        # Delete individual uploaded files tracked in database
+                        # Delete files
                         for doc in docs:
                             file_path = doc.get('file_path')
                             if file_path and os.path.exists(file_path):
                                 try:
                                     os.remove(file_path)
-                                    files_deleted += 1
                                 except Exception:
                                     pass
                         
-                        # Delete upload folder for this enrollment (pattern: uploads/techid_uuid/)
+                        # Delete upload folder
                         if os.path.exists('uploads'):
                             upload_folder_prefix = f"{tech_id}_"
                             for folder in os.listdir('uploads'):
@@ -268,7 +220,7 @@ def _enrollments_tab(enrollments):
                                         except Exception:
                                             pass
                         
-                        # Delete generated PDF (pattern: pdfs/techid_uuid.pdf)
+                        # Delete PDF
                         if os.path.exists('pdfs'):
                             pdf_prefix = f"{tech_id}_"
                             for pdf_file in os.listdir('pdfs'):
@@ -276,23 +228,29 @@ def _enrollments_tab(enrollments):
                                     pdf_path = os.path.join('pdfs', pdf_file)
                                     try:
                                         os.remove(pdf_path)
-                                        files_deleted += 1
                                     except Exception:
                                         pass
                         
-                        # Delete from database (CASCADE deletes related documents)
+                        # Delete from database
                         database.delete_enrollment(enrollment_id)
-                        deleted_count += 1
+                        
+                        # Clear confirmation state
+                        st.session_state.delete_confirm.pop(enrollment_id, None)
+                        st.success(f"✅ Deleted enrollment {enrollment_id}")
+                        st.rerun()
                         
                     except Exception as e:
                         st.error(f"Error deleting enrollment {enrollment_id}: {e}")
-                
-                if deleted_count > 0:
-                    st.success(f"✅ Successfully deleted {deleted_count} enrollment(s)")
+                else:
+                    # First click - set confirmation
+                    st.session_state.delete_confirm[enrollment_id] = True
                     st.rerun()
         
-        with col2:
-            st.caption("⚠️ This will permanently delete the selected enrollments and all associated files")
+        st.markdown("---")
+    
+    # Show selected count
+    if st.session_state.selected_enrollment_ids:
+        st.info(f"🔵 {len(st.session_state.selected_enrollment_ids)} enrollment(s) selected for export")
 
     # -----------------------------
     # Photo Modal
@@ -396,17 +354,15 @@ def _enrollments_tab(enrollments):
 # ------------------------------------------------------------
 def page_admin_control_center():
     st.title("BYOV Admin Control Center")
-    st.caption("Operational oversight: enrollments, rules, notifications")
+    st.caption("Manage enrollments and view analytics")
 
     # Load data once for all tabs
     enrollments = _get_all_enrollments()
-    rules = database.get_notification_rules()
-    sent = _get_all_sent_notifications()
 
     tabs = st.tabs(["Overview", "Enrollments"])
 
     with tabs[0]:
-        _overview_tab(enrollments, rules, sent)
+        _overview_tab(enrollments)
     with tabs[1]:
         _enrollments_tab(enrollments)
 
