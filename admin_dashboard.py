@@ -115,7 +115,7 @@ def _enrollments_tab(enrollments):
             filtered.append(r)
 
     # -----------------------------
-    # Pagination
+    # Pagin1FTLR4FEXAPA20178ation
     # -----------------------------
     total = len(filtered)
     page_size = st.session_state.ecc_page_size
@@ -142,6 +142,11 @@ def _enrollments_tab(enrollments):
     # AG-Grid Table
     # -----------------------------
     df = pd.DataFrame(page_rows)
+
+    # Remove unwanted columns
+    for col in ["comment", "template_used"]:
+        if col in df.columns:
+            df.drop(columns=[col], inplace=True)
 
     # Format submission date
     if "submission_date" in df.columns:
