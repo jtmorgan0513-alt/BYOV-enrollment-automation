@@ -197,12 +197,11 @@ def _rules_tab(enrollments, rules):
     # Toggle for submission email notification
     st.markdown("---")
     st.session_state.setdefault('submission_email_enabled', True)
-    submission_email_enabled = st.toggle(
+    st.toggle(
         "Enable Submission Email Notification",
         value=st.session_state['submission_email_enabled'],
         key="submission_email_enabled"
     )
-    st.session_state['submission_email_enabled'] = submission_email_enabled
 
     st.subheader("Notification Rules")
 
