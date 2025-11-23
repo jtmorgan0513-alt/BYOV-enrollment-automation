@@ -61,9 +61,9 @@ def _overview_tab(enrollments, rules, sent):
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Enrollments", total_enrollments)
-    c2.metric("Active Rules", active_rules)
-    c3.metric("Emails Logged", total_notifications)
-    c4.metric("Storage Mode", storage_mode)
+    
+    
+    
 
     if not database.USE_SQLITE:
         st.warning("Running in JSON fallback storage mode. Some features may be limited.")
