@@ -1,20 +1,12 @@
 import json
 import os
-from datetime import date, datetime
-import io
 import re
 import shutil
+from datetime import date, datetime
+import io
 
-import pandas as pd
 import streamlit as st
-import uuid 
-
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.mime.application import MIMEApplication
-from email.mime.image import MIMEImage
-from email.utils import formatdate
+import uuid
 import requests
 
 from streamlit_drawable_canvas import st_canvas
@@ -22,9 +14,11 @@ from PIL import Image
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
-from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
-import zipfile
-import mimetypes
+# AgGrid is optional; the admin dashboard uses a server-side table by default
+
+# Shared helpers moved to separate modules
+from data_store import load_enrollments, save_enrollments
+from notifications import send_email_notification
 
 
 DATA_FILE = "enrollments.json"
@@ -268,156 +262,8 @@ def show_money_rain(count: int = 30, duration_ms: int = 5000):
     """
     st.markdown(html, unsafe_allow_html=True)
 
-def send_email_notification(record):
-    # Read email config from Streamlit secrets
-    email_config = st.secrets.get("email", {})
-
-    sender = email_config.get("sender")
-    app_password = email_config.get("app_password")
-    recipient = email_config.get("recipient")
-
-    subject = f"New BYOV Enrollment: {record.get('full_name','Unknown')} (Tech {record.get('tech_id','N/A')})"
-
-    # Build email body with all collected information
-    industries_str = ", ".join(record.get('industries', [])) if record.get('industries') else "None"
-
-    # Format submission date
-    submission_date = record.get('submission_date', '')
-    if submission_date:
-        try:
-            dt = datetime.fromisoformat(submission_date)
-            submission_date = dt.strftime("%m/%d/%Y")
-        except Exception:
-            pass
-
-    body = f"""
-A new BYOV enrollment has been submitted.
-
-TECHNICIAN INFORMATION
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Name:           {record.get('full_name','')}
-Tech ID:        {record.get('tech_id','')}
-District:       {record.get('district','')}
-State:          {record.get('state', 'N/A')}
-Industries:     {industries_str}
-
-VEHICLE INFORMATION
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Year:           {record.get('year','')}
-Make:           {record.get('make','')}
-Model:          {record.get('model','')}
-VIN:            {record.get('vin','')}
-
-DOCUMENTATION
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Insurance Exp:  {record.get('insurance_exp','')}
-Registration Exp: {record.get('registration_exp','')}
-Template Used:  {record.get('template_used', 'N/A')}
-
-FILES UPLOADED
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Vehicle Photos:       {len(record.get('vehicle_photos_paths', [])) if record.get('vehicle_photos_paths') else 0} files
-Insurance Documents:  {len(record.get('insurance_docs_paths', [])) if record.get('insurance_docs_paths') else 0} files
-Registration Documents: {len(record.get('registration_docs_paths', [])) if record.get('registration_docs_paths') else 0} files
-
-ADDITIONAL NOTES
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-{record.get('comment', 'None')}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Submitted: {submission_date}
-
-Files are attached to this email when feasible. If the files are too large,
-they are available via the BYOV Admin Dashboard.
-
-This is an automated notification from the BYOV Enrollment System.
-"""
-
-    msg = MIMEMultipart()
-    msg["From"] = sender or "no-reply@example.com"
-    msg["To"] = recipient or ""
-    msg["Date"] = formatdate(localtime=True)
-    msg["Subject"] = subject
-    msg.attach(MIMEText(body, "plain"))
-
-    # Collect file paths referenced in the record
-    file_keys = [
-        'signature_pdf_path',
-        'vehicle_photos_paths',
-        'insurance_docs_paths',
-        'registration_docs_paths'
-    ]
-    files = []
-    for k in file_keys:
-        v = record.get(k)
-        if not v:
-            continue
-        if isinstance(v, list):
-            for p in v:
-                if p and os.path.exists(p):
-                    files.append(p)
-        else:
-            if isinstance(v, str) and os.path.exists(v):
-                files.append(v)
-
-    # If no files, send simple notification
-    try:
-        MAX_ATTACHMENT_SIZE = 20 * 1024 * 1024  # 20 MB
-
-        total_size = sum(os.path.getsize(p) for p in files) if files else 0
-
-        # If total size is larger than threshold, attempt to zip attachments
-        if files and total_size > MAX_ATTACHMENT_SIZE:
-            # Create an in-memory ZIP archive
-            zip_buffer = io.BytesIO()
-            with zipfile.ZipFile(zip_buffer, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
-                for p in files:
-                    arcname = os.path.basename(p)
-                    try:
-                        zf.write(p, arcname=arcname)
-                    except Exception:
-                        # skip files that can't be read
-                        pass
-            zip_buffer.seek(0)
-            zipped_size = len(zip_buffer.getvalue())
-            if zipped_size <= MAX_ATTACHMENT_SIZE:
-                part = MIMEApplication(zip_buffer.read())
-                part.add_header('Content-Disposition', 'attachment', filename='enrollment_files.zip')
-                msg.attach(part)
-            else:
-                # Attachments too large even when zipped; include file list and do not attach
-                summary = '\n'.join([f"- {os.path.basename(p)} ({os.path.getsize(p)/(1024*1024):.1f} MB)" for p in files])
-                extra = "\n\nFiles are too large to include in this email. Files are stored in the BYOV Admin Dashboard:\n" + summary
-                # append to message text
-                msg.attach(MIMEText(extra, 'plain'))
-        else:
-            # Attach individual files
-            for p in files:
-                try:
-                    ctype, encoding = mimetypes.guess_type(p)
-                    if ctype is None:
-                        ctype = 'application/octet-stream'
-                    maintype, subtype = ctype.split('/', 1)
-                    with open(p, 'rb') as fp:
-                        part = MIMEApplication(fp.read(), _subtype=subtype)
-                        part.add_header('Content-Disposition', 'attachment', filename=os.path.basename(p))
-                        msg.attach(part)
-                except Exception:
-                    # skip attachments we can't read
-                    continue
-
-        # Send email
-        if not sender or not app_password or not recipient:
-            st.warning("Email credentials or recipient not fully configured in secrets; skipping email send.")
-            return False
-
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(sender, app_password)
-            server.sendmail(sender, recipient, msg.as_string())
-        return True
-    except Exception as e:
-        st.error(f"Email sending failed: {str(e)}")
-        return False
+# send_email_notification was moved to `notifications.py` to allow reuse by the
+# admin control center without importing the whole Streamlit app.
 
 def decode_vin(vin: str):
     vin = vin.strip().upper()
@@ -1711,6 +1557,8 @@ def render_file_gallery_modal(original_row, selected_row, tech_id):
 def page_admin_dashboard():
     st.title("BYOV Admin Dashboard")
     st.caption("Review and export vehicle enrollments.")
+
+    import pandas as pd
 
     records = load_enrollments()
     if not records:

@@ -1,5 +1,6 @@
+import os
+import json
 import streamlit as st
-import pandas as pd
 from datetime import datetime, timedelta
 
 from data_store import load_enrollments, save_enrollments
@@ -31,6 +32,8 @@ def save_rules(rules):
 def page_admin_control_center():
     st.title("BYOV Admin Control Center")
     st.caption("Manage enrollments and notification rules")
+
+    import pandas as pd
 
     records = load_enrollments()
     if not records:
