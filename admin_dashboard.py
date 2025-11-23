@@ -282,135 +282,7 @@ def _enrollments_tab(enrollments):
             st.session_state.selected_enrollment_id = None
 
 
-def _rules_tab(enrollments, rules):
-    # Toggle for submission email notification
-    st.markdown("---")
-    st.session_state.setdefault('submission_email_enabled', True)
-    if 'submission_email_enabled' not in st.session_state:
-        st.session_state['submission_email_enabled'] = True
-    st.toggle(
-        "Enable Submission Email Notification",
-        value=st.session_state['submission_email_enabled'],
-        key="submission_email_enabled"
-    )
 
-    st.subheader("Notification Rules")
-
-    # Create new rule
-    with st.form("create_rule"):
-        st.write("Create a new rule")
-        rule_name = st.text_input("Rule Name")
-        trigger = st.selectbox("Trigger", ["On Submission", "On Expiration", "Manual"])
-        recipients_raw = st.text_area("Recipients (comma-separated emails)")
-        days_before = st.number_input("Days before expiration (if Expiration trigger)", min_value=1, max_value=365, value=7)
-        enabled = st.checkbox("Enabled", value=True)
-        submitted = st.form_submit_button("Add Rule")
-        if submitted:
-            if not rule_name:
-                st.error("Rule name is required")
-            else:
-                rule = {
-                    'rule_name': rule_name,
-                    'trigger': trigger if trigger != 'On Expiration' else 'On Expiration (days before)',
-                    'recipients': [r.strip() for r in recipients_raw.split(',') if r.strip()],
-                    'days_before': int(days_before) if 'Expiration' in trigger else None,
-                    'enabled': enabled
-                }
-                try:
-                    database.add_notification_rule(rule)
-                    st.success("Rule added")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Failed to add rule: {e}")
-
-    if not rules:
-        st.info("No rules configured yet.")
-        return
-
-    st.markdown("### Existing Rules")
-    rule_lookup = {r.get('id'): r for r in rules}
-
-    for rule in rules:
-        rid = rule.get('id')
-        with st.expander(f"{rule.get('rule_name')} — {rule.get('trigger')}", expanded=False):
-            cols = st.columns([2,2,2,1,1,1])
-            with cols[0]:
-                st.write("Recipients:")
-                st.caption(', '.join(rule.get('recipients', [])) or 'None')
-            with cols[1]:
-                st.write("Days Before:")
-                st.caption(rule.get('days_before') or '—')
-            with cols[2]:
-                st.write("Status:")
-                st.caption("Enabled" if rule.get('enabled') else "Disabled")
-            with cols[3]:
-                if st.button("Toggle", key=f"toggle_{rid}"):
-                    try:
-                        database.update_notification_rule(rid, {'enabled': 0 if rule.get('enabled') else 1})
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Toggle failed: {e}")
-            with cols[4]:
-                if st.button("Delete", key=f"delete_{rid}"):
-                    try:
-                        database.delete_notification_rule(rid)
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Delete failed: {e}")
-            with cols[5]:
-                # Run rule for selected enrollment
-                if st.button("Run", key=f"run_{rid}"):
-                    eid = st.session_state.get('selected_enrollment_id')
-                    if not eid:
-                        st.warning("Select an enrollment in the Enrollments tab first.")
-                    else:
-                        # Find enrollment
-                        target = None
-                        for e in enrollments:
-                            if int(e.get('id')) == int(eid):
-                                target = e
-                                break
-                        if not target:
-                            st.error("Enrollment not found.")
-                        else:
-                            try:
-                                # Prevent duplicates
-                                sent = database.get_sent_notifications(eid)
-                                sent_ids = {s.get('rule_id') for s in sent}
-                                if rid in sent_ids:
-                                    st.info("Already sent for this enrollment.")
-                                else:
-                                    ok = send_email_notification(target, recipients=rule.get('recipients'), subject=rule.get('rule_name'))
-                                    if ok:
-                                        database.log_notification_sent(eid, rid)
-                                        st.success("Notification sent & logged")
-                                    else:
-                                        st.warning("Send attempted but may have failed")
-                            except Exception as e:
-                                st.error(f"Run failed: {e}")
-
-            st.markdown("---")
-            st.write("Edit Rule")
-            with st.form(key=f"edit_{rid}"):
-                new_name = st.text_input("Name", value=rule.get('rule_name'))
-                new_trigger = st.selectbox("Trigger", ["On Submission", "On Expiration (days before)", "Manual"], index=["On Submission", "On Expiration (days before)", "Manual"].index(rule.get('trigger')))
-                new_recipients_raw = st.text_area("Recipients", value=','.join(rule.get('recipients', [])))
-                new_days_before = st.number_input("Days Before", min_value=1, max_value=365, value=rule.get('days_before') or 7)
-                new_enabled = st.checkbox("Enabled", value=bool(rule.get('enabled')))
-                saved = st.form_submit_button("Save Changes")
-                if saved:
-                    try:
-                        database.update_notification_rule(rid, {
-                            'rule_name': new_name,
-                            'trigger': new_trigger,
-                            'recipients': [r.strip() for r in new_recipients_raw.split(',') if r.strip()],
-                            'days_before': int(new_days_before) if 'Expiration' in new_trigger else None,
-                            'enabled': 1 if new_enabled else 0
-                        })
-                        st.success("Updated")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Update failed: {e}")
 
 
 def _notifications_tab(enrollments, rules, sent):
@@ -445,15 +317,13 @@ def page_admin_control_center():
     rules = database.get_notification_rules()
     sent = _get_all_sent_notifications()
 
-    tabs = st.tabs(["Overview", "Enrollments", "Rules", "Notifications Log"])
+    tabs = st.tabs(["Overview", "Enrollments", "Notifications Log"])
 
     with tabs[0]:
         _overview_tab(enrollments, rules, sent)
     with tabs[1]:
         _enrollments_tab(enrollments)
     with tabs[2]:
-        _rules_tab(enrollments, rules)
-    with tabs[3]:
         _notifications_tab(enrollments, rules, sent)
 
     st.markdown("---")
