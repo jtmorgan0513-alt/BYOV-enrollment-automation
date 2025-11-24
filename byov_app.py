@@ -1835,11 +1835,11 @@ def page_admin_settings():
 def main():
     st.set_page_config(
         page_title="BYOV Program",
-        layout="wide",
+        layout="centered",
         initial_sidebar_state="expanded",
     )
     
-    # Theme-aware styling
+    # Theme-aware styling with mobile optimization
     st.markdown("""
         <style>
         .stApp {
@@ -1847,9 +1847,34 @@ def main():
         }
         .main {
             background-color: var(--background-color);
+            max-width: 1200px;
+            padding: 1rem;
         }
         [data-testid="stSidebar"] {
             background-color: var(--secondary-background-color);
+        }
+        
+        /* Mobile responsive adjustments */
+        @media (max-width: 768px) {
+            .main {
+                padding: 0.5rem;
+            }
+            .stButton>button, .stDownloadButton>button {
+                font-size: 14px;
+                padding: 0.5rem;
+            }
+            h1 {
+                font-size: 1.5rem !important;
+            }
+            h2 {
+                font-size: 1.25rem !important;
+            }
+            h3 {
+                font-size: 1.1rem !important;
+            }
+            .stTextInput>div>div>input {
+                font-size: 14px;
+            }
         }
         /* Sears blue theme for buttons and checkboxes */
         :root, .stApp {
