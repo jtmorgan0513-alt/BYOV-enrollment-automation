@@ -171,7 +171,7 @@ def _enrollments_tab(enrollments):
             with st.container():
                 st.markdown(f"**Enrollment #{enrollment_id}** — {row_name}")
                 
-                cols = st.columns([1, 1, 1, 6])
+                cols = st.columns([1, 1, 1, 1, 5])
                 
                 # View Photos button
                 with cols[0]:
@@ -179,8 +179,27 @@ def _enrollments_tab(enrollments):
                         st.session_state.open_photos_for_id = enrollment_id
                         st.rerun()
                 
-                # Select button
+                # PDF Download button
                 with cols[1]:
+                    # Get signed PDF from documents
+                    docs = database.get_documents_for_enrollment(enrollment_id)
+                    pdf_docs = [d for d in docs if d['doc_type'] == 'signature']
+                    if pdf_docs and os.path.exists(pdf_docs[0]['file_path']):
+                        with open(pdf_docs[0]['file_path'], 'rb') as f:
+                            pdf_bytes = f.read()
+                        st.download_button(
+                            label="📄 Download PDF",
+                            data=pdf_bytes,
+                            file_name=f"BYOV_{row.get('tech_id', 'enrollment')}_{enrollment_id}.pdf",
+                            mime="application/pdf",
+                            key=f"download_pdf_{enrollment_id}",
+                            use_container_width=True
+                        )
+                    else:
+                        st.button("📄 No PDF", key=f"no_pdf_{enrollment_id}", disabled=True, use_container_width=True)
+                
+                # Select button
+                with cols[2]:
                     is_selected = enrollment_id in st.session_state.selected_enrollment_ids
                     btn_label = "✅ Selected" if is_selected else "⭘ Select"
                     btn_type = "primary" if is_selected else "secondary"
@@ -192,7 +211,7 @@ def _enrollments_tab(enrollments):
                         st.rerun()
                 
                 # Delete button
-                with cols[2]:
+                with cols[3]:
                     is_confirming = st.session_state.delete_confirm.get(enrollment_id, False)
                     btn_label = "⚠️ Confirm" if is_confirming else "🗑️ Delete"
                     
@@ -269,9 +288,10 @@ def _enrollments_tab(enrollments):
         vehicle = [d["file_path"] for d in docs if d["doc_type"] == "vehicle"]
         registration = [d["file_path"] for d in docs if d["doc_type"] == "registration"]
         insurance = [d["file_path"] for d in docs if d["doc_type"] == "insurance"]
+        signature_pdf = [d["file_path"] for d in docs if d["doc_type"] == "signature"]
 
         st.markdown("---")
-        st.markdown("### 📸 Photo Viewer")
+        st.markdown("### 📸 Photo & Document Viewer")
         
         # Close button at top
         col1, col2 = st.columns([6, 1])
@@ -280,11 +300,39 @@ def _enrollments_tab(enrollments):
                 st.session_state.open_photos_for_id = None
                 st.rerun()
 
-        tabs = st.tabs(["🚗 Vehicle", "📄 Registration", "🛡️ Insurance"])
+        tabs = st.tabs(["📄 Signed PDF", "🚗 Vehicle", "📋 Registration", "🛡️ Insurance"])
+        
+        # PDF Tab
+        with tabs[0]:
+            if signature_pdf and os.path.exists(signature_pdf[0]):
+                with open(signature_pdf[0], 'rb') as f:
+                    pdf_bytes = f.read()
+                
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.info(f"📄 {os.path.basename(signature_pdf[0])}")
+                with col2:
+                    st.download_button(
+                        label="⬇️ Download PDF",
+                        data=pdf_bytes,
+                        file_name=os.path.basename(signature_pdf[0]),
+                        mime="application/pdf",
+                        key=f"download_pdf_modal_{enrollment_id}",
+                        use_container_width=True
+                    )
+                
+                # Display PDF using iframe
+                import base64
+                base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
+                pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="800" type="application/pdf"></iframe>'
+                st.markdown(pdf_display, unsafe_allow_html=True)
+            else:
+                st.warning("No signed PDF found for this enrollment.")
+        
         groups = [vehicle, registration, insurance]
         labels = ["Vehicle", "Registration", "Insurance"]
 
-        for tab, paths, label in zip(tabs, groups, labels):
+        for tab, paths, label in zip(tabs[1:], groups, labels):
             with tab:
                 if paths:
                     for i in range(0, len(paths), 3):

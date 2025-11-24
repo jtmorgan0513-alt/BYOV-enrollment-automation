@@ -166,16 +166,28 @@ def save_uploaded_files(uploaded_files, folder_path: str, prefix: str) -> list:
                     background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
                     img = background
                 
-                # Resize if too large (max 1920px on longest side)
-                max_size = 1920
+                # Resize for email-friendly size (max 1200px on longest side)
+                max_size = 1200
                 if max(img.size) > max_size:
                     img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
                 
-                # Save with compression
-                img.save(path, 'JPEG', quality=85, optimize=True)
+                # Save with higher compression for smaller file size
+                # Quality 75 provides good balance between size and quality
+                img.save(path, 'JPEG', quality=75, optimize=True)
                 
-            except Exception:
+                # Log file size reduction
+                try:
+                    original_size = len(uploaded_file.getvalue())
+                    compressed_size = os.path.getsize(path)
+                    reduction = ((original_size - compressed_size) / original_size) * 100
+                    if reduction > 0:
+                        print(f"Compressed {filename}: {original_size/1024:.1f}KB → {compressed_size/1024:.1f}KB ({reduction:.1f}% reduction)")
+                except Exception:
+                    pass
+                
+            except Exception as e:
                 # If compression fails, save original
+                print(f"Warning: Image compression failed for {filename}: {e}")
                 with open(path, 'wb') as f:
                     uploaded_file.seek(0)
                     f.write(uploaded_file.getbuffer())
