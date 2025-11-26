@@ -159,8 +159,9 @@ def insert_enrollment(record):
                 full_name, tech_id, district, state, referred_by,
                 industries, year, make, model, vin,
                 insurance_exp, registration_exp,
-                template_used, comment, submission_date
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                template_used, comment, submission_date,
+                approved, approved_at, approved_by
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             record.get("full_name"),
             record.get("tech_id"),
@@ -176,7 +177,10 @@ def insert_enrollment(record):
             record.get("registration_exp"),
             record.get("template_used"),
             record.get("comment"),
-            record.get("submission_date", datetime.now().isoformat())
+            record.get("submission_date", datetime.now().isoformat()),
+            0,  # approved - default to pending
+            None,  # approved_at
+            None  # approved_by
         ))
 
         enrollment_id = cursor.lastrowid
@@ -537,6 +541,39 @@ def get_sent_notifications(enrollment_id):
     else:
         store = _load_store()
         return [r for r in store.get('notifications_sent', []) if int(r.get('enrollment_id')) == int(enrollment_id)]
+
+
+# ============================================================
+# APPROVAL TRACKING
+# ============================================================
+def approve_enrollment(enrollment_id, approved_by="Admin"):
+    """Mark an enrollment as approved with timestamp and admin name."""
+    if USE_SQLITE and sqlite3 is not None:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            UPDATE enrollments 
+            SET approved = 1,
+                approved_at = ?,
+                approved_by = ?
+            WHERE id = ?
+        """, (datetime.now().isoformat(), approved_by, enrollment_id))
+        
+        conn.commit()
+        conn.close()
+        return True
+    else:
+        # JSON fallback
+        store = _load_store()
+        for rec in store.get('enrollments', []):
+            if int(rec.get('id')) == int(enrollment_id):
+                rec['approved'] = 1
+                rec['approved_at'] = datetime.now().isoformat()
+                rec['approved_by'] = approved_by
+                break
+        _save_store(store)
+        return True
 
 
 # ============================================================

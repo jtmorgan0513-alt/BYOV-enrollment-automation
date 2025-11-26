@@ -362,56 +362,114 @@ def decode_vin(vin: str):
 
 
 def post_to_dashboard(record: dict) -> dict:
-    """Create technician in external BYOVDashboard if not already present.
-
-    Uses internal token-based server-to-server path (no session creation).
-    Skips silently if required env vars are missing.
-    Returns a small status dict for UI messaging.
+    """Create technician in Replit dashboard using session-based authentication.
+    
+    Authentication Flow:
+    1. POST /api/login with username/password to get session cookie
+    2. POST /api/technicians with enrollment data using session
+    3. Handle dateStartedByov date format conversion (ISO to YYYY-MM-DD)
+    
+    Returns status dict for UI messaging.
     """
-    api_url = os.getenv("DASHBOARD_API_URL")
-    token = os.getenv("WORKFLOW_INTERNAL_TOKEN")
-    if not api_url or not token:
-        return {"skipped": "missing configuration"}
-
     try:
-        base = api_url.rstrip('/')
+        # Get configuration from Streamlit secrets
+        dashboard_url = st.secrets["replit"]["REPLIT_DASHBOARD_URL"]
+        username = st.secrets["replit"]["REPLIT_DASHBOARD_USERNAME"]
+        password = st.secrets["replit"]["REPLIT_DASHBOARD_PASSWORD"]
+    except Exception:
+        # Fallback to environment variables if secrets not available
+        dashboard_url = os.getenv("REPLIT_DASHBOARD_URL", "https://byovdashboard.replit.app")
+        username = os.getenv("REPLIT_DASHBOARD_USERNAME", "admin")
+        password = os.getenv("REPLIT_DASHBOARD_PASSWORD", "admin123")
+    
+    try:
+        # Step 1: Create session and login
+        session = requests.Session()
+        
+        login_payload = {
+            "username": username,
+            "password": password
+        }
+        
+        login_resp = session.post(
+            f"{dashboard_url}/api/login",
+            json=login_payload,
+            timeout=10
+        )
+        
+        if not login_resp.ok:
+            return {
+                "error": f"Login failed with status {login_resp.status_code}",
+                "body": login_resp.text[:200]
+            }
+        
+        # Step 2: Convert submission_date to YYYY-MM-DD format for dateStartedByov
+        submission_date = record.get("submission_date", "")
+        date_started = None
+        
+        if submission_date:
+            try:
+                # Parse ISO format timestamp
+                from datetime import datetime
+                dt = datetime.fromisoformat(submission_date)
+                # Convert to YYYY-MM-DD
+                date_started = dt.strftime("%Y-%m-%d")
+            except Exception:
+                # Fallback to today's date
+                from datetime import datetime
+                date_started = datetime.now().strftime("%Y-%m-%d")
+        else:
+            from datetime import datetime
+            date_started = datetime.now().strftime("%Y-%m-%d")
+        
+        # Step 3: Check if technician already exists
         tech_id = record.get("tech_id")
         if not tech_id:
             return {"error": "record missing tech_id"}
-
-        # Check existence via query parameter search
-        exist_resp = requests.get(f"{base}/api/technicians", params={"techId": tech_id}, timeout=10)
-        if exist_resp.ok:
+        
+        check_resp = session.get(
+            f"{dashboard_url}/api/technicians",
+            params={"techId": tech_id},
+            timeout=10
+        )
+        
+        if check_resp.ok:
             try:
-                existing = exist_resp.json()
+                existing = check_resp.json()
                 if isinstance(existing, list) and existing:
                     return {"status": "exists"}
             except Exception:
                 pass
-
-        # Map local record fields to dashboard schema
+        
+        # Step 4: Create technician payload with proper field mapping
         payload = {
-            "techId": tech_id,
             "name": record.get("full_name"),
-            # Using state as region placeholder; adjust if a true region field is added later
-            "region": record.get("state"),
+            "techId": tech_id,
+            "region": record.get("state"),  # Map state to region
             "district": record.get("district"),
+            "enrollmentStatus": "Enrolled",  # Changed from "Pending"
+            "dateStartedByov": date_started,  # NEW REQUIRED FIELD
+            "vinNumber": record.get("vin"),  # Note: vinNumber vs vin
             "vehicleMake": record.get("make"),
             "vehicleModel": record.get("model"),
-            "vehicleYear": record.get("year"),
-            "vin": record.get("vin"),
-            "insuranceExpiration": record.get("insurance_exp"),
-            "registrationExpiration": record.get("registration_exp"),
-            "enrollmentStatus": "Pending"
+            "vehicleYear": record.get("year")
         }
-
-        headers = {"X-Internal-Token": token, "Content-Type": "application/json"}
-        create_resp = requests.post(f"{base}/api/technicians", json=payload, headers=headers, timeout=15)
-
+        
+        # Step 5: POST to create technician
+        create_resp = session.post(
+            f"{dashboard_url}/api/technicians",
+            json=payload,
+            timeout=15
+        )
+        
         if 200 <= create_resp.status_code < 300:
             return {"status": "created"}
         else:
-            return {"error": f"dashboard responded {create_resp.status_code}", "body": create_resp.text[:200]}
+            return {
+                "error": f"dashboard responded {create_resp.status_code}",
+                "body": create_resp.text[:200]
+            }
+            
     except Exception as e:
         return {"error": str(e)}
 

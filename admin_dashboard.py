@@ -130,7 +130,7 @@ def _enrollments_tab(enrollments):
     page_rows = filtered[start:end]
 
     # -----------------------------
-    # Build DataFrame for Display
+    # Build DataFrame for Display - 10 Columns
     # -----------------------------
     display_rows = []
     for row in page_rows:
@@ -141,16 +141,55 @@ def _enrollments_tab(enrollments):
         else:
             industries_str = str(industries_raw)
         
-        # Format vehicle info
+        # Format vehicle info (Year, Make & Model)
         vehicle_info = f"{row.get('year', '')} {row.get('make', '')} {row.get('model', '')}".strip()
         
+        # Format enrollment date from ISO to MM/DD/YYYY
+        submission_date = row.get('submission_date', '')
+        date_enrolled = 'N/A'
+        if submission_date:
+            try:
+                dt = datetime.fromisoformat(submission_date)
+                date_enrolled = dt.strftime("%m/%d/%Y")
+            except Exception:
+                date_enrolled = submission_date
+        
+        # Format registration expiration date
+        reg_exp = row.get('registration_exp', '')
+        if reg_exp:
+            try:
+                dt = datetime.fromisoformat(reg_exp)
+                reg_exp = dt.strftime("%m/%d/%Y")
+            except Exception:
+                pass
+        else:
+            reg_exp = 'N/A'
+        
+        # Format insurance expiration date
+        ins_exp = row.get('insurance_exp', '')
+        if ins_exp:
+            try:
+                dt = datetime.fromisoformat(ins_exp)
+                ins_exp = dt.strftime("%m/%d/%Y")
+            except Exception:
+                pass
+        else:
+            ins_exp = 'N/A'
+        
+        # Approved status
+        approved_status = "Yes" if row.get('approved', 0) == 1 else "No"
+        
         display_rows.append({
-            'ID': row.get('id'),
             'Name': row.get('full_name', 'N/A'),
             'Tech ID': row.get('tech_id', 'N/A'),
             'District': row.get('district', 'N/A'),
+            'VIN': row.get('vin', 'N/A'),
+            'Vehicle': vehicle_info,
             'Industries': industries_str,
-            'Vehicle': vehicle_info
+            'Date Enrolled': date_enrolled,
+            'Reg Exp': reg_exp,
+            'Ins Exp': ins_exp,
+            'Approved': approved_status
         })
     
     # Display table with dataframe
@@ -199,7 +238,7 @@ def _enrollments_tab(enrollments):
                 </div>
                 """, unsafe_allow_html=True)
                 
-                cols = st.columns([1.5, 1.8, 1.2, 1.5, 1.8, 3.2])
+                cols = st.columns([2, 2.5, 1.5, 2, 2.5, 2])
                 
                 # Select button
                 with cols[0]:
@@ -241,25 +280,43 @@ def _enrollments_tab(enrollments):
                 
                 # Approve button - Sends to dashboard
                 with cols[3]:
-                    if st.button("✅ Approve", key=f"approve_{enrollment_id}", type="primary", use_container_width=True):
-                        # Import the dashboard posting function
-                        from byov_app import post_to_dashboard
-                        
-                        # Convert enrollment to record format
-                        record = dict(row)
-                        
-                        # Attempt to post to dashboard
-                        sync_result = post_to_dashboard(record)
-                        
-                        if sync_result.get("status") == "created":
-                            st.success(f"✅ Enrollment #{enrollment_id} approved and sent to dashboard!")
-                        elif sync_result.get("status") == "exists":
-                            st.info(f"ℹ️ Enrollment #{enrollment_id} already exists on dashboard")
-                        elif sync_result.get("skipped"):
-                            st.warning(f"⚠️ Dashboard sync skipped: {sync_result.get('skipped')}")
-                        else:
-                            st.error(f"❌ Dashboard sync error: {sync_result.get('error', 'Unknown error')}")
-                        st.rerun()
+                    # Check if already approved
+                    is_approved = row.get('approved', 0) == 1
+                    
+                    if is_approved:
+                        # Show approved badge instead of button
+                        st.markdown(
+                            '<div style="background: #10b981; color: white; padding: 8px 12px; '
+                            'border-radius: 10px; text-align: center; font-weight: 600; font-size: 12px;">'
+                            '✅ Approved</div>',
+                            unsafe_allow_html=True
+                        )
+                    else:
+                        # Show approve button
+                        if st.button("✅ Approve", key=f"approve_{enrollment_id}", type="primary", use_container_width=True):
+                            # Import the dashboard posting function
+                            from byov_app import post_to_dashboard
+                            
+                            # Convert enrollment to record format
+                            record = dict(row)
+                            
+                            # Attempt to post to dashboard
+                            sync_result = post_to_dashboard(record)
+                            
+                            if sync_result.get("status") == "created":
+                                # Mark as approved in database
+                                database.approve_enrollment(enrollment_id)
+                                st.success(f"✅ Enrollment #{enrollment_id} approved and sent to dashboard!")
+                                st.rerun()
+                            elif sync_result.get("status") == "exists":
+                                # Mark as approved even if already exists
+                                database.approve_enrollment(enrollment_id)
+                                st.info(f"ℹ️ Enrollment #{enrollment_id} already exists on dashboard - marked as approved")
+                                st.rerun()
+                            elif sync_result.get("skipped"):
+                                st.warning(f"⚠️ Dashboard sync skipped: {sync_result.get('skipped')}")
+                            else:
+                                st.error(f"❌ Dashboard sync error: {sync_result.get('error', 'Unknown error')}")
                 
                 # Delete button
                 with cols[4]:
@@ -482,7 +539,7 @@ def page_admin_control_center():
         _enrollments_tab(enrollments)
 
     st.markdown("---")
-    st.caption("Select an enrollment in the Enrollments tab before running a rule.")
+    st.caption("Select Approve when all information has been successfully validated for enrollment to push to dashboard.")
 
 
 if __name__ == '__main__':
