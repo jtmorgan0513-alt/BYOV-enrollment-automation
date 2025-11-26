@@ -268,7 +268,7 @@ def _enrollments_tab(enrollments):
                 </div>
                 """, unsafe_allow_html=True)
                 
-                cols = st.columns([2, 2.5, 3, 2, 2.5, 2])
+                cols = st.columns([2.2, 2.7, 3.2, 2.2, 2.7, 2.2])
                 
                 # Select button
                 with cols[0]:
