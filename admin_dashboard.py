@@ -115,7 +115,7 @@ def _enrollments_tab(enrollments):
                     "vin": "TESTVIN0000000000",
                     "submission_date": datetime.now().isoformat()
                 }
-                result = post_to_dashboard(test_record)
+                result = post_to_dashboard(test_record, enrollment_id=0)
                 if result.get("status") in ("created", "exists"):
                     st.success("✅ Dashboard reachable and authenticated successfully.")
                 elif result.get("error"):
