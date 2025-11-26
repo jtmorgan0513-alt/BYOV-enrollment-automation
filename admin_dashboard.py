@@ -440,16 +440,16 @@ def page_admin_control_center():
     <style>
     /* Enhanced button styling */
     div[data-testid="stButton"] button {
-        font-size: 14px;
+        font-size: 12px;
         font-weight: 600;
         border-radius: 10px;
-        padding: 10px 20px;
+        padding: 8px 12px;
         border: none;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         transition: all 0.3s ease;
         white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        overflow: visible;
+        text-overflow: clip;
     }
     
     div[data-testid="stButton"] button:hover {
@@ -463,15 +463,15 @@ def page_admin_control_center():
     
     /* Download button styling */
     div[data-testid="stDownloadButton"] button {
-        font-size: 14px;
+        font-size: 12px;
         font-weight: 600;
         border-radius: 10px;
-        padding: 10px 20px;
+        padding: 8px 12px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         transition: all 0.3s ease;
         white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        overflow: visible;
+        text-overflow: clip;
     }
     
     div[data-testid="stDownloadButton"] button:hover {
