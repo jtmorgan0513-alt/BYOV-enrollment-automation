@@ -199,11 +199,11 @@ def _enrollments_tab(enrollments):
                 </div>
                 """, unsafe_allow_html=True)
                 
-                cols = st.columns([1, 1, 1, 1, 5])
+                cols = st.columns([1.5, 1.5, 1, 1.5, 4.5])
                 
                 # View Photos button - Blue theme
                 with cols[0]:
-                    if st.button("🖼️ View\nPhotos", key=f"view_photos_{enrollment_id}", use_container_width=True, type="primary"):
+                    if st.button("🖼️ View Photos", key=f"view_photos_{enrollment_id}", use_container_width=True, type="primary"):
                         st.session_state.open_photos_for_id = enrollment_id
                         st.rerun()
                 
@@ -216,7 +216,7 @@ def _enrollments_tab(enrollments):
                         with open(pdf_docs[0]['file_path'], 'rb') as f:
                             pdf_bytes = f.read()
                         st.download_button(
-                            label="📥 Down\nload PDF",
+                            label="📥 Download PDF",
                             data=pdf_bytes,
                             file_name=f"BYOV_{row.get('tech_id', 'enrollment')}_{enrollment_id}.pdf",
                             mime="application/pdf",
@@ -230,7 +230,7 @@ def _enrollments_tab(enrollments):
                 # Select button - Toggle theme
                 with cols[2]:
                     is_selected = enrollment_id in st.session_state.selected_enrollment_ids
-                    btn_label = "✅ Selec\nted" if is_selected else "⭕ Selec\nt"
+                    btn_label = "✅ Selected" if is_selected else "⭕ Select"
                     btn_type = "primary" if is_selected else "secondary"
                     if st.button(btn_label, key=f"select_{enrollment_id}", type=btn_type, use_container_width=True):
                         if is_selected:
@@ -242,7 +242,7 @@ def _enrollments_tab(enrollments):
                 # Delete button - Red theme with confirmation
                 with cols[3]:
                     is_confirming = st.session_state.delete_confirm.get(enrollment_id, False)
-                    btn_label = "⚠️ Confir\nm Delete" if is_confirming else "🗑️ Delet\ne"
+                    btn_label = "⚠️ Confirm Delete" if is_confirming else "🗑️ Delete"
                     
                     if st.button(btn_label, key=f"delete_{enrollment_id}", type="secondary", use_container_width=True):
                         if is_confirming:
