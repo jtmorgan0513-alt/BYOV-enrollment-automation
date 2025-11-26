@@ -1106,16 +1106,8 @@ def wizard_step_4():
                 else:
                     banner_msg = "✅ Enrollment saved, but email notification failed. Administrator has been notified."
 
-                # Attempt external dashboard sync
-                sync_result = post_to_dashboard(record)
-                if sync_result.get("status") == "created":
-                    banner_msg += " (Dashboard record created)"
-                elif sync_result.get("status") == "exists":
-                    banner_msg += " (Dashboard record already exists)"
-                elif sync_result.get("skipped"):
-                    banner_msg += " (Dashboard sync skipped: missing config)"
-                elif sync_result.get("error"):
-                    banner_msg += f" (Dashboard sync error: {sync_result['error']})"
+                # NOTE: Dashboard sync is now handled by admin approval in admin_dashboard.py
+                # No automatic sync on submission - admin must review and approve first
 
                 # Evaluate DB-backed notification rules for "On Submission"
                 try:
