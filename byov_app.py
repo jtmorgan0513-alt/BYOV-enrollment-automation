@@ -257,72 +257,77 @@ def generate_signed_pdf(template_path: str, signature_image, output_path: str,
 
 
 def show_money_rain(count: int = 30, duration_ms: int = 5000):
-    """Render a falling money (dollar) animation using HTML/CSS/JS.
+    """Render a falling money (dollar) animation using pure HTML/CSS.
 
-    This replaces Streamlit's `st.balloons()` with a lightweight client-side
-    animation so users see dollar emojis drifting down when a submission
-    completes.
+    Uses CSS keyframes only (no <script>) so it works reliably on
+    Streamlit Cloud and newer Streamlit versions with stricter JS policies.
+    The overlay fades out automatically after the given duration.
     """
-    # Build bill divs with slight randomization for left position and delay
-    bills = []
-    for i in range(count):
-        left = (i * 73) % 100  # spread across width
-        delay = (i % 7) * 0.15
-        dur = 3 + (i % 5) * 0.4
-        rotate = (i * 37) % 360
-        scale = 0.8 + (i % 3) * 0.15
-        bills.append(
-            f'<div class="bill" style="left:{left}%; animation-delay:{delay}s; animation-duration:{dur}s; transform: rotate({rotate}deg) scale({scale});">💵</div>'
-        )
+    try:
+        # Build bill divs with slight randomization for left position and delay
+        bills = []
+        for i in range(count):
+            left = (i * 73) % 100  # spread across width
+            delay = (i % 7) * 0.15
+            dur = 3 + (i % 5) * 0.4
+            rotate = (i * 37) % 360
+            scale = 0.8 + (i % 3) * 0.15
+            bills.append(
+                f'<div class="bill" style="left:{left}%; animation-delay:{delay}s; animation-duration:{dur}s; transform: rotate({rotate}deg) scale({scale});">💵</div>'
+            )
 
-    html = f"""
-    <style>
-    .money-rain-wrapper {{
-        pointer-events: none;
-        position: fixed;
-        left: 0;
-        top: 0;
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-        z-index: 99999;
-    }}
-    .money-rain-wrapper .bill {{
-        position: absolute;
-        top: -10%;
-        font-size: 28px;
-        will-change: transform, opacity;
-        opacity: 0.95;
-        text-shadow: 0 1px 0 rgba(0,0,0,0.12);
-        filter: drop-shadow(0 4px 8px rgba(0,0,0,0.12));
-        animation-name: fallAndRotate;
-        animation-timing-function: linear;
-        animation-iteration-count: 1;
-    }}
+        fade_delay_s = max(0, duration_ms) / 1000.0
 
-    @keyframes fallAndRotate {{
-        0% {{ transform: translateY(-10vh) rotate(0deg); opacity: 1; }}
-        70% {{ opacity: 1; }}
-        100% {{ transform: translateY(110vh) rotate(360deg); opacity: 0; }}
-    }}
-    </style>
-
-    <div class="money-rain-wrapper" id="money-rain-wrapper">
-        {''.join(bills)}
-    </div>
-    <script>
-    // Remove the animation container after a short delay so it doesn't persist
-    setTimeout(function() {{
-        var el = document.getElementById('money-rain-wrapper');
-        if (el) {{
-            el.style.transition = 'opacity 600ms ease-out';
-            el.style.opacity = '0';
-            setTimeout(function() {{ el.remove(); }}, 700);
+        html = f"""
+        <style>
+        .money-rain-wrapper {{
+            pointer-events: none;
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: 99999;
+            opacity: 1;
+            animation: fadeOut 0.6s ease-out forwards;
+            animation-delay: {fade_delay_s}s;
         }}
-    }}, {duration_ms});
-    </script>
-    """
-    st.markdown(html, unsafe_allow_html=True)
+        .money-rain-wrapper .bill {{
+            position: absolute;
+            top: -10%;
+            font-size: 28px;
+            will-change: transform, opacity;
+            opacity: 0.95;
+            text-shadow: 0 1px 0 rgba(0,0,0,0.12);
+            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.12));
+            animation-name: fallAndRotate;
+            animation-timing-function: linear;
+            animation-iteration-count: 1;
+        }}
+
+        @keyframes fallAndRotate {{
+            0% {{ transform: translateY(-10vh) rotate(0deg); opacity: 1; }}
+            70% {{ opacity: 1; }}
+            100% {{ transform: translateY(110vh) rotate(360deg); opacity: 0; }}
+        }}
+
+        @keyframes fadeOut {{
+            to {{ opacity: 0; visibility: hidden; }}
+        }}
+        </style>
+
+        <div class="money-rain-wrapper">
+            {''.join(bills)}
+        </div>
+        """
+        st.markdown(html, unsafe_allow_html=True)
+    except Exception:
+        # Silent fallback to built-in balloons if HTML injection is blocked
+        try:
+            st.balloons()
+        except Exception:
+            pass
 
 # send_email_notification was moved to `notifications.py` to allow reuse by the
 # admin control center without importing the whole Streamlit app.
