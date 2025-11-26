@@ -45,6 +45,46 @@ Automated BYOV enrollment engine with VIN decoding, data collection, PDF generat
    streamlit run byov_app.py
    ```
 
+### Optional: Dashboard Integration
+To auto-create a technician record in the central BYOV Dashboard after each submission, set these environment variables before running Streamlit:
+
+```powershell
+set DASHBOARD_API_URL=https://your-dashboard-domain
+set WORKFLOW_INTERNAL_TOKEN=super-secret-shared-token
+```
+
+The app will:
+- Query `GET /api/technicians?techId=<TECH_ID>` to check existence.
+- POST to `/api/technicians` with header `X-Internal-Token` if missing.
+- Mark the status as `Pending` (dashboard or workflow can later patch to `Enrolled`).
+
+If variables are not set, it skips external sync cleanly and notes this in the success banner.
+
+### Optional: SendGrid Email Delivery
+You can switch email notifications (submission + rules) to SendGrid instead of raw SMTP.
+
+Set secrets or environment variables:
+
+```powershell
+set SENDGRID_API_KEY=SG.xxxxxx
+set SENDGRID_FROM_EMAIL=byov@yourdomain.com
+```
+
+Or in `secrets.toml`:
+```toml
+[email]
+sendgrid_api_key = "SG.xxxxxx"
+sendgrid_from_email = "byov@yourdomain.com"
+sender = "fallback@gmail.com"         # kept for SMTP fallback
+app_password = "gmail-app-password"   # fallback
+recipient = "recipient@example.com"
+```
+
+Behavior:
+- If SendGrid vars present, attempts API send first.
+- Falls back to Gmail SMTP if SendGrid fails.
+- Large attachment handling unchanged (zipping >20MB aggregate).
+
 4. **Access the Admin Control Center:**
    - Use the sidebar to select "Admin Control Center"
    - No password required
@@ -74,4 +114,4 @@ Business Source License 1.1 (BSL-1.1)
 
 ---
 
-_Last updated: November 2025 — Admin Control Center UI overhaul, password removed, improved metrics and rule management._
+_Last updated: November 2025 — Added secure dashboard POST integration, internal token support & SendGrid email option._

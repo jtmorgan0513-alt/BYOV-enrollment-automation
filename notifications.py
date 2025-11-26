@@ -3,6 +3,8 @@ import os
 import zipfile
 import mimetypes
 import smtplib
+import json
+import requests
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
@@ -159,13 +161,51 @@ This is an automated notification from the BYOV Enrollment System.
                 except Exception:
                     continue
 
+        # Try SendGrid first if API key provided via secrets or env
+        sg_key = email_config.get("sendgrid_api_key") or os.getenv("SENDGRID_API_KEY")
+        sg_from = email_config.get("sendgrid_from_email") or os.getenv("SENDGRID_FROM_EMAIL") or sender
+        if sg_key and sg_from and recipient_list:
+            try:
+                sg_payload = {
+                    "personalizations": [{"to": [{"email": r} for r in recipient_list]}],
+                    "from": {"email": sg_from},
+                    "subject": subject,
+                    "content": [{"type": "text/plain", "value": msg.get_payload()[0].get_payload()}]
+                }
+                # Attachments (SendGrid expects base64 but to keep lightweight we omit large ones here)
+                # For now rely on existing size logic; small files can be attached
+                attachments = []
+                for part in msg.get_payload()[1:]:
+                    if part.get_content_disposition() == 'attachment':
+                        try:
+                            import base64
+                            attachments.append({
+                                "content": base64.b64encode(part.get_payload(decode=True)).decode('utf-8'),
+                                "filename": part.get_filename(),
+                                "type": part.get_content_type(),
+                                "disposition": "attachment"
+                            })
+                        except Exception:
+                            pass
+                if attachments:
+                    sg_payload["attachments"] = attachments
+                resp = requests.post("https://api.sendgrid.com/v3/mail/send", headers={
+                    "Authorization": f"Bearer {sg_key}",
+                    "Content-Type": "application/json"
+                }, data=json.dumps(sg_payload), timeout=15)
+                if 200 <= resp.status_code < 300:
+                    return True
+                else:
+                    st.warning(f"SendGrid failed ({resp.status_code}); falling back to SMTP.")
+            except Exception as e:
+                st.warning(f"SendGrid error: {e}; falling back to SMTP.")
+
         if not sender or not app_password or not recipient_list:
             st.warning("Email credentials or recipient(s) not fully configured; skipping email send.")
             return False
 
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(sender, app_password)
-            # sendmail expects sender, list of recipients
             server.sendmail(sender, recipient_list, msg.as_string())
         return True
     except Exception as e:

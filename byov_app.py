@@ -361,6 +361,61 @@ def decode_vin(vin: str):
         return {}
 
 
+def post_to_dashboard(record: dict) -> dict:
+    """Create technician in external BYOVDashboard if not already present.
+
+    Uses internal token-based server-to-server path (no session creation).
+    Skips silently if required env vars are missing.
+    Returns a small status dict for UI messaging.
+    """
+    api_url = os.getenv("DASHBOARD_API_URL")
+    token = os.getenv("WORKFLOW_INTERNAL_TOKEN")
+    if not api_url or not token:
+        return {"skipped": "missing configuration"}
+
+    try:
+        base = api_url.rstrip('/')
+        tech_id = record.get("tech_id")
+        if not tech_id:
+            return {"error": "record missing tech_id"}
+
+        # Check existence via query parameter search
+        exist_resp = requests.get(f"{base}/api/technicians", params={"techId": tech_id}, timeout=10)
+        if exist_resp.ok:
+            try:
+                existing = exist_resp.json()
+                if isinstance(existing, list) and existing:
+                    return {"status": "exists"}
+            except Exception:
+                pass
+
+        # Map local record fields to dashboard schema
+        payload = {
+            "techId": tech_id,
+            "name": record.get("full_name"),
+            # Using state as region placeholder; adjust if a true region field is added later
+            "region": record.get("state"),
+            "district": record.get("district"),
+            "vehicleMake": record.get("make"),
+            "vehicleModel": record.get("model"),
+            "vehicleYear": record.get("year"),
+            "vin": record.get("vin"),
+            "insuranceExpiration": record.get("insurance_exp"),
+            "registrationExpiration": record.get("registration_exp"),
+            "enrollmentStatus": "Pending"
+        }
+
+        headers = {"X-Internal-Token": token, "Content-Type": "application/json"}
+        create_resp = requests.post(f"{base}/api/technicians", json=payload, headers=headers, timeout=15)
+
+        if 200 <= create_resp.status_code < 300:
+            return {"status": "created"}
+        else:
+            return {"error": f"dashboard responded {create_resp.status_code}", "body": create_resp.text[:200]}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # ------------------------
 # WIZARD STEP FUNCTIONS
 # ------------------------
@@ -549,12 +604,15 @@ def wizard_step_2():
     st.markdown("### Registration")
     col1, col2 = st.columns(2)
     with col1:
-        registration_exp_default = data.get('registration_exp', date.today())
+        registration_exp_default = data.get('registration_exp')
         if isinstance(registration_exp_default, str):
-            registration_exp_default = datetime.strptime(registration_exp_default, "%Y-%m-%d").date()
+            try:
+                registration_exp_default = datetime.strptime(registration_exp_default, "%Y-%m-%d").date()
+            except Exception:
+                registration_exp_default = None
         registration_exp = st.date_input(
             "Registration Expiration Date",
-            value=registration_exp_default,
+            value=registration_exp_default if registration_exp_default else None,
             key="wiz_registration_exp"
         )
     
@@ -575,12 +633,15 @@ def wizard_step_2():
     st.markdown("### Insurance")
     col1, col2 = st.columns(2)
     with col1:
-        insurance_exp_default = data.get('insurance_exp', date.today())
+        insurance_exp_default = data.get('insurance_exp')
         if isinstance(insurance_exp_default, str):
-            insurance_exp_default = datetime.strptime(insurance_exp_default, "%Y-%m-%d").date()
+            try:
+                insurance_exp_default = datetime.strptime(insurance_exp_default, "%Y-%m-%d").date()
+            except Exception:
+                insurance_exp_default = None
         insurance_exp = st.date_input(
             "Insurance Expiration Date",
-            value=insurance_exp_default,
+            value=insurance_exp_default if insurance_exp_default else None,
             key="wiz_insurance_exp"
         )
     
@@ -608,8 +669,12 @@ def wizard_step_2():
         errors.append("At least 4 vehicle photos are required")
     if not registration_docs:
         errors.append("Registration document is required")
+    if not registration_exp:
+        errors.append("Registration expiration date is required")
     if not insurance_docs:
         errors.append("Insurance document is required")
+    if not insurance_exp:
+        errors.append("Insurance expiration date is required")
     
     can_proceed = len(errors) == 0
     
@@ -978,6 +1043,17 @@ def wizard_step_4():
                 else:
                     banner_msg = "✅ Enrollment saved, but email notification failed. Administrator has been notified."
 
+                # Attempt external dashboard sync
+                sync_result = post_to_dashboard(record)
+                if sync_result.get("status") == "created":
+                    banner_msg += " (Dashboard record created)"
+                elif sync_result.get("status") == "exists":
+                    banner_msg += " (Dashboard record already exists)"
+                elif sync_result.get("skipped"):
+                    banner_msg += " (Dashboard sync skipped: missing config)"
+                elif sync_result.get("error"):
+                    banner_msg += f" (Dashboard sync error: {sync_result['error']})"
+
                 # Evaluate DB-backed notification rules for "On Submission"
                 try:
                     rules = database.get_notification_rules()
@@ -1145,9 +1221,9 @@ def page_new_enrollment_OLD():
     st.subheader("Expiration Dates")
     col3, col4 = st.columns(2)
     with col3:
-        insurance_exp = st.date_input("Insurance Expiration Date", value=date.today())
+        insurance_exp = st.date_input("Insurance Expiration Date", value=None)
     with col4:
-        registration_exp = st.date_input("Registration Expiration Date", value=date.today())
+        registration_exp = st.date_input("Registration Expiration Date", value=None)
     
     comment = st.text_area("Additional Comments (100 characters max)", max_chars=100)
     
@@ -1311,10 +1387,16 @@ def page_new_enrollment_OLD():
     if not registration_docs:
         can_submit = False
         validation_messages.append("Registration document(s) required")
+    if not registration_exp:
+        can_submit = False
+        validation_messages.append("Registration expiration date is required")
     
     if not insurance_docs:
         can_submit = False
         validation_messages.append("Insurance document(s) required")
+    if not insurance_exp:
+        can_submit = False
+        validation_messages.append("Insurance expiration date is required")
     
     if not st.session_state.get('template_downloaded', False):
         can_submit = False
