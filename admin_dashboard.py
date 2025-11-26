@@ -168,18 +168,46 @@ def _enrollments_tab(enrollments):
             enrollment_id = row.get('id')
             row_name = f"{row.get('full_name', 'N/A')} (Tech ID: {row.get('tech_id', 'N/A')})"
             
+            # Custom CSS for this enrollment card
+            st.markdown(f"""
+            <style>
+            div[data-testid="stHorizontalBlock"] button {{
+                border-radius: 8px;
+                font-weight: 500;
+                transition: all 0.3s ease;
+            }}
+            </style>
+            """, unsafe_allow_html=True)
+            
             with st.container():
-                st.markdown(f"**Enrollment #{enrollment_id}** — {row_name}")
+                # Enhanced header with badge styling
+                vehicle_info = f"{row.get('year', '')} {row.get('make', '')} {row.get('model', '')}".strip()
+                st.markdown(f"""
+                <div style="
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    padding: 15px 20px;
+                    border-radius: 10px;
+                    margin-bottom: 15px;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                ">
+                    <h3 style="color: white; margin: 0; font-size: 18px;">
+                        Enrollment #{enrollment_id} — {row_name}
+                    </h3>
+                    <p style="color: rgba(255,255,255,0.9); margin: 5px 0 0 0; font-size: 14px;">
+                        🚗 {vehicle_info} | 📍 District {row.get('district', 'N/A')}
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
                 
                 cols = st.columns([1, 1, 1, 1, 5])
                 
-                # View Photos button
+                # View Photos button - Blue theme
                 with cols[0]:
-                    if st.button("📸 View Photos", key=f"view_photos_{enrollment_id}", use_container_width=True):
+                    if st.button("🖼️ View\nPhotos", key=f"view_photos_{enrollment_id}", use_container_width=True, type="primary"):
                         st.session_state.open_photos_for_id = enrollment_id
                         st.rerun()
                 
-                # PDF Download button
+                # PDF Download button - Green theme
                 with cols[1]:
                     # Get signed PDF from documents
                     docs = database.get_documents_for_enrollment(enrollment_id)
@@ -188,20 +216,21 @@ def _enrollments_tab(enrollments):
                         with open(pdf_docs[0]['file_path'], 'rb') as f:
                             pdf_bytes = f.read()
                         st.download_button(
-                            label="📄 Download PDF",
+                            label="📥 Down\nload PDF",
                             data=pdf_bytes,
                             file_name=f"BYOV_{row.get('tech_id', 'enrollment')}_{enrollment_id}.pdf",
                             mime="application/pdf",
                             key=f"download_pdf_{enrollment_id}",
-                            use_container_width=True
+                            use_container_width=True,
+                            type="primary"
                         )
                     else:
                         st.button("📄 No PDF", key=f"no_pdf_{enrollment_id}", disabled=True, use_container_width=True)
                 
-                # Select button
+                # Select button - Toggle theme
                 with cols[2]:
                     is_selected = enrollment_id in st.session_state.selected_enrollment_ids
-                    btn_label = "✅ Selected" if is_selected else "⭘ Select"
+                    btn_label = "✅ Selec\nted" if is_selected else "⭕ Selec\nt"
                     btn_type = "primary" if is_selected else "secondary"
                     if st.button(btn_label, key=f"select_{enrollment_id}", type=btn_type, use_container_width=True):
                         if is_selected:
@@ -210,10 +239,10 @@ def _enrollments_tab(enrollments):
                             st.session_state.selected_enrollment_ids.add(enrollment_id)
                         st.rerun()
                 
-                # Delete button
+                # Delete button - Red theme with confirmation
                 with cols[3]:
                     is_confirming = st.session_state.delete_confirm.get(enrollment_id, False)
-                    btn_label = "⚠️ Confirm" if is_confirming else "🗑️ Delete"
+                    btn_label = "⚠️ Confir\nm Delete" if is_confirming else "🗑️ Delet\ne"
                     
                     if st.button(btn_label, key=f"delete_{enrollment_id}", type="secondary", use_container_width=True):
                         if is_confirming:
@@ -271,7 +300,7 @@ def _enrollments_tab(enrollments):
                             st.session_state.delete_confirm[enrollment_id] = True
                             st.rerun()
                 
-                st.markdown("---")
+                st.markdown("<br>", unsafe_allow_html=True)
     
     # Show selected count
     if st.session_state.selected_enrollment_ids:
@@ -383,6 +412,58 @@ def _enrollments_tab(enrollments):
 def page_admin_control_center():
     st.title("BYOV Admin Control Center")
     st.caption("Manage enrollments and view analytics")
+    
+    # Add custom CSS for enhanced button styling
+    st.markdown("""
+    <style>
+    /* Enhanced button styling */
+    div[data-testid="stButton"] button {
+        font-size: 14px;
+        font-weight: 600;
+        border-radius: 10px;
+        padding: 10px 20px;
+        border: none;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transition: all 0.3s ease;
+    }
+    
+    div[data-testid="stButton"] button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    
+    div[data-testid="stButton"] button:active {
+        transform: translateY(0px);
+    }
+    
+    /* Download button styling */
+    div[data-testid="stDownloadButton"] button {
+        font-size: 14px;
+        font-weight: 600;
+        border-radius: 10px;
+        padding: 10px 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transition: all 0.3s ease;
+    }
+    
+    div[data-testid="stDownloadButton"] button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    
+    /* Card container styling */
+    div[data-testid="stHorizontalBlock"] {
+        gap: 10px;
+    }
+    
+    /* Table styling */
+    div[data-testid="stDataFrame"] {
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
     # Load data once for all tabs
     enrollments = _get_all_enrollments()
