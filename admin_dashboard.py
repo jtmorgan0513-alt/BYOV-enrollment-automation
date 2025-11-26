@@ -71,6 +71,36 @@ def _enrollments_tab(enrollments):
 
     st.subheader("Enrollments")
 
+    # Diagnostics: Dashboard connectivity test
+    with st.expander("Diagnostics: Dashboard Connectivity", expanded=False):
+        st.caption("Verify Replit dashboard login and API availability.")
+        if st.button("🔌 Test Dashboard Login", key="test_dashboard_login", type="secondary"):
+            try:
+                from byov_app import post_to_dashboard
+                # Minimal record with required keys to trigger login only
+                test_record = {
+                    "tech_id": "TEST-CONNECTION",
+                    "full_name": "Connectivity Test",
+                    "state": "CA",
+                    "district": "00",
+                    "make": "Test",
+                    "model": "Test",
+                    "year": "2025",
+                    "vin": "TESTVIN0000000000",
+                    "submission_date": datetime.now().isoformat()
+                }
+                result = post_to_dashboard(test_record)
+                if result.get("status") in ("created", "exists"):
+                    st.success("✅ Dashboard reachable and authenticated successfully.")
+                elif result.get("error"):
+                    st.error(f"❌ Login or API error: {result.get('error')}\n{result.get('body','')}")
+                elif result.get("skipped"):
+                    st.warning(f"⚠️ Skipped: {result.get('skipped')}")
+                else:
+                    st.info(f"ℹ️ Result: {result}")
+            except Exception as e:
+                st.error(f"Unexpected error during connectivity test: {e}")
+
     # -----------------------------
     # No enrollments
     # -----------------------------
@@ -238,7 +268,7 @@ def _enrollments_tab(enrollments):
                 </div>
                 """, unsafe_allow_html=True)
                 
-                cols = st.columns([2, 2.5, 2, 2, 2.5, 2])
+                cols = st.columns([2, 2.5, 3, 2, 2.5, 2])
                 
                 # Select button
                 with cols[0]:
