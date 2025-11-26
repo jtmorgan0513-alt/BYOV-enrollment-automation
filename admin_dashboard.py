@@ -238,7 +238,7 @@ def _enrollments_tab(enrollments):
                 </div>
                 """, unsafe_allow_html=True)
                 
-                cols = st.columns([2, 2.5, 1.5, 2, 2.5, 2])
+                cols = st.columns([2, 2.5, 2, 2, 2.5, 2])
                 
                 # Select button
                 with cols[0]:
@@ -267,7 +267,7 @@ def _enrollments_tab(enrollments):
                         with open(pdf_docs[0]['file_path'], 'rb') as f:
                             pdf_bytes = f.read()
                         st.download_button(
-                            label="📄 View PDF",
+                            label="⬇️ Download PDF",
                             data=pdf_bytes,
                             file_name=f"BYOV_{row.get('tech_id', 'enrollment')}_{enrollment_id}.pdf",
                             mime="application/pdf",
