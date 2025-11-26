@@ -72,8 +72,34 @@ def _enrollments_tab(enrollments):
     st.subheader("Enrollments")
 
     # Diagnostics: Dashboard connectivity test
-    with st.expander("Diagnostics: Dashboard Connectivity", expanded=False):
-        st.caption("Verify Replit dashboard login and API availability.")
+    with st.expander("🔧 Diagnostics & Maintenance", expanded=False):
+        st.caption("**Database Migration:**")
+        if st.button("⚙️ Run Database Migration (Add Approval Columns)", key="run_migration", type="primary"):
+            try:
+                import sqlite3
+                conn = sqlite3.connect(database.DB_PATH)
+                cursor = conn.cursor()
+                
+                # Check if columns already exist
+                cursor.execute("PRAGMA table_info(enrollments)")
+                columns = [row[1] for row in cursor.fetchall()]
+                
+                if 'approved' in columns:
+                    st.info("✓ Migration already complete - approved columns exist")
+                else:
+                    # Add the columns
+                    cursor.execute("ALTER TABLE enrollments ADD COLUMN approved INTEGER DEFAULT 0")
+                    cursor.execute("ALTER TABLE enrollments ADD COLUMN approved_at TEXT")
+                    cursor.execute("ALTER TABLE enrollments ADD COLUMN approved_by TEXT")
+                    conn.commit()
+                    st.success("✅ Migration successful! Approval tracking columns added.")
+                
+                conn.close()
+            except Exception as e:
+                st.error(f"❌ Migration failed: {e}")
+        
+        st.markdown("---")
+        st.caption("**Verify Replit dashboard login and API availability:**")
         if st.button("🔌 Test Dashboard Login", key="test_dashboard_login", type="secondary"):
             try:
                 from byov_app import post_to_dashboard
