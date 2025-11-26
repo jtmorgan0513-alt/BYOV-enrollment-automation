@@ -199,7 +199,7 @@ def _enrollments_tab(enrollments):
                 </div>
                 """, unsafe_allow_html=True)
                 
-                cols = st.columns([1.2, 1.2, 0.8, 1.2, 1.2, 4.4])
+                cols = st.columns([1.5, 1.8, 1.2, 1.5, 1.8, 3.2])
                 
                 # Select button
                 with cols[0]:
@@ -447,6 +447,9 @@ def page_admin_control_center():
         border: none;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         transition: all 0.3s ease;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     
     div[data-testid="stButton"] button:hover {
@@ -466,6 +469,9 @@ def page_admin_control_center():
         padding: 10px 20px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         transition: all 0.3s ease;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     
     div[data-testid="stDownloadButton"] button:hover {
