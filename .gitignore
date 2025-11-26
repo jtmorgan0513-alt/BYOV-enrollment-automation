@@ -208,9 +208,13 @@ __marimo__/
 # Application artifacts
 /uploads/
 /pdfs/
-/data/
+/data/byov.db
+/data/enrollments.json
 enrollments.json
 secrets.toml
+
+# Keep database backups in git (but exclude main database)
+!/data/backups/
 
 # Streamlit secrets (keep config.toml but ignore secrets.toml in .streamlit/)
 /.streamlit/secrets.toml
