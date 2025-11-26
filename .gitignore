@@ -219,3 +219,16 @@ secrets.toml
 .env
 .venv/
 .vscode/
+
+# Node.js / Workflow API
+node_modules/
+/workflow-api/node_modules/
+/workflow-api/dist/
+/workflow-api/.env
+/workflow-api/logs/
+/workflow-api/data/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+*.tsbuildinfo
