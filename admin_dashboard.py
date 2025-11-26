@@ -199,36 +199,10 @@ def _enrollments_tab(enrollments):
                 </div>
                 """, unsafe_allow_html=True)
                 
-                cols = st.columns([1.5, 1.5, 1, 1.5, 4.5])
+                cols = st.columns([1.2, 1.2, 0.8, 1.2, 1.2, 4.4])
                 
-                # View Photos button - Blue theme
+                # Select button
                 with cols[0]:
-                    if st.button("🖼️ View Photos", key=f"view_photos_{enrollment_id}", use_container_width=True, type="primary"):
-                        st.session_state.open_photos_for_id = enrollment_id
-                        st.rerun()
-                
-                # PDF Download button - Green theme
-                with cols[1]:
-                    # Get signed PDF from documents
-                    docs = database.get_documents_for_enrollment(enrollment_id)
-                    pdf_docs = [d for d in docs if d['doc_type'] == 'signature']
-                    if pdf_docs and os.path.exists(pdf_docs[0]['file_path']):
-                        with open(pdf_docs[0]['file_path'], 'rb') as f:
-                            pdf_bytes = f.read()
-                        st.download_button(
-                            label="📥 Download PDF",
-                            data=pdf_bytes,
-                            file_name=f"BYOV_{row.get('tech_id', 'enrollment')}_{enrollment_id}.pdf",
-                            mime="application/pdf",
-                            key=f"download_pdf_{enrollment_id}",
-                            use_container_width=True,
-                            type="primary"
-                        )
-                    else:
-                        st.button("📄 No PDF", key=f"no_pdf_{enrollment_id}", disabled=True, use_container_width=True)
-                
-                # Select button - Toggle theme
-                with cols[2]:
                     is_selected = enrollment_id in st.session_state.selected_enrollment_ids
                     btn_label = "✅ Selected" if is_selected else "⭕ Select"
                     btn_type = "primary" if is_selected else "secondary"
@@ -239,8 +213,56 @@ def _enrollments_tab(enrollments):
                             st.session_state.selected_enrollment_ids.add(enrollment_id)
                         st.rerun()
                 
-                # Delete button - Red theme with confirmation
+                # View Photos button
+                with cols[1]:
+                    if st.button("🖼️ View Photos", key=f"view_photos_{enrollment_id}", use_container_width=True, type="secondary"):
+                        st.session_state.open_photos_for_id = enrollment_id
+                        st.rerun()
+                
+                # View PDF button
+                with cols[2]:
+                    # Get signed PDF from documents
+                    docs = database.get_documents_for_enrollment(enrollment_id)
+                    pdf_docs = [d for d in docs if d['doc_type'] == 'signature']
+                    if pdf_docs and os.path.exists(pdf_docs[0]['file_path']):
+                        with open(pdf_docs[0]['file_path'], 'rb') as f:
+                            pdf_bytes = f.read()
+                        st.download_button(
+                            label="📄 View PDF",
+                            data=pdf_bytes,
+                            file_name=f"BYOV_{row.get('tech_id', 'enrollment')}_{enrollment_id}.pdf",
+                            mime="application/pdf",
+                            key=f"download_pdf_{enrollment_id}",
+                            use_container_width=True,
+                            type="secondary"
+                        )
+                    else:
+                        st.button("📄 No PDF", key=f"no_pdf_{enrollment_id}", disabled=True, use_container_width=True)
+                
+                # Approve button - Sends to dashboard
                 with cols[3]:
+                    if st.button("✅ Approve", key=f"approve_{enrollment_id}", type="primary", use_container_width=True):
+                        # Import the dashboard posting function
+                        from byov_app import post_to_dashboard
+                        
+                        # Convert enrollment to record format
+                        record = dict(row)
+                        
+                        # Attempt to post to dashboard
+                        sync_result = post_to_dashboard(record)
+                        
+                        if sync_result.get("status") == "created":
+                            st.success(f"✅ Enrollment #{enrollment_id} approved and sent to dashboard!")
+                        elif sync_result.get("status") == "exists":
+                            st.info(f"ℹ️ Enrollment #{enrollment_id} already exists on dashboard")
+                        elif sync_result.get("skipped"):
+                            st.warning(f"⚠️ Dashboard sync skipped: {sync_result.get('skipped')}")
+                        else:
+                            st.error(f"❌ Dashboard sync error: {sync_result.get('error', 'Unknown error')}")
+                        st.rerun()
+                
+                # Delete button
+                with cols[4]:
                     is_confirming = st.session_state.delete_confirm.get(enrollment_id, False)
                     btn_label = "⚠️ Confirm Delete" if is_confirming else "🗑️ Delete"
                     
