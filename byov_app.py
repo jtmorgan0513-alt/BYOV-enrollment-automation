@@ -366,15 +366,15 @@ def decode_vin(vin: str):
         return {}
 
 
-def post_to_dashboard(record: dict) -> dict:
-    """Create technician in Replit dashboard using session-based authentication.
+def post_to_dashboard(record: dict, enrollment_id: int) -> dict:
+    """Create technician in Replit dashboard with complete data and photo uploads.
     
     Authentication Flow:
     1. POST /api/login with username/password to get session cookie
-    2. POST /api/technicians with enrollment data using session
-    3. Handle dateStartedByov date format conversion (ISO to YYYY-MM-DD)
+    2. POST /api/technicians with complete enrollment data using session
+    3. Upload photos using GCS flow (get URL → PUT file → save photo record)
     
-    Returns status dict for UI messaging.
+    Returns status dict with photo_count for UI messaging.
     """
     try:
         # Get configuration from Streamlit secrets
@@ -388,6 +388,8 @@ def post_to_dashboard(record: dict) -> dict:
         password = os.getenv("REPLIT_DASHBOARD_PASSWORD", "admin123")
     
     try:
+        from datetime import datetime
+        
         # Step 1: Create session and login
         session = requests.Session()
         
@@ -408,27 +410,23 @@ def post_to_dashboard(record: dict) -> dict:
                 "body": login_resp.text[:200]
             }
         
-        # Step 2: Convert submission_date to YYYY-MM-DD format for dateStartedByov
-        submission_date = record.get("submission_date", "")
-        date_started = None
-        
-        if submission_date:
+        # Step 2: Format dates for dashboard (ISO to YYYY-MM-DD)
+        def format_date(date_str):
+            if not date_str:
+                return None
             try:
-                # Parse ISO format timestamp
-                from datetime import datetime
-                dt = datetime.fromisoformat(submission_date)
-                # Convert to YYYY-MM-DD
-                date_started = dt.strftime("%Y-%m-%d")
+                dt = datetime.fromisoformat(date_str)
+                return dt.strftime("%Y-%m-%d")
             except Exception:
-                # Fallback to today's date
-                from datetime import datetime
-                date_started = datetime.now().strftime("%Y-%m-%d")
-        else:
-            from datetime import datetime
-            date_started = datetime.now().strftime("%Y-%m-%d")
+                return None
+        
+        submission_date = record.get("submission_date", "")
+        date_started = format_date(submission_date) or datetime.now().strftime("%Y-%m-%d")
+        insurance_exp = format_date(record.get("insurance_expiration"))
+        registration_exp = format_date(record.get("registration_expiration"))
         
         # Step 3: Check if technician already exists
-        tech_id = record.get("tech_id")
+        tech_id = record.get("tech_id", "").upper()  # MUST BE UPPERCASE
         if not tech_id:
             return {"error": "record missing tech_id"}
         
@@ -442,38 +440,126 @@ def post_to_dashboard(record: dict) -> dict:
             try:
                 existing = check_resp.json()
                 if isinstance(existing, list) and existing:
-                    return {"status": "exists"}
+                    return {"status": "exists", "photo_count": 0}
             except Exception:
                 pass
         
-        # Step 4: Create technician payload with proper field mapping
+        # Step 4: Format industry as comma-separated string
+        industry_list = record.get("industry", [])
+        if isinstance(industry_list, list):
+            industry = ", ".join(industry_list)
+        else:
+            industry = str(industry_list) if industry_list else ""
+        
+        # Step 5: Create technician payload with complete field mapping
         payload = {
             "name": record.get("full_name"),
-            "techId": tech_id,
-            "region": record.get("state"),  # Map state to region
+            "techId": tech_id,  # UPPERCASE
+            "region": record.get("state"),
             "district": record.get("district"),
-            "enrollmentStatus": "Enrolled",  # Changed from "Pending"
-            "dateStartedByov": date_started,  # NEW REQUIRED FIELD
-            "vinNumber": record.get("vin"),  # Note: vinNumber vs vin
+            "enrollmentStatus": "Enrolled",  # Always "Enrolled" on approval
+            "dateStartedByov": date_started,
+            "vinNumber": record.get("vin"),
             "vehicleMake": record.get("make"),
             "vehicleModel": record.get("model"),
-            "vehicleYear": record.get("year")
+            "vehicleYear": record.get("year"),
+            "industry": industry,  # Comma-separated
+            "insuranceExpiration": insurance_exp,  # YYYY-MM-DD
+            "registrationExpiration": registration_exp  # YYYY-MM-DD
         }
         
-        # Step 5: POST to create technician
+        # Step 6: POST to create technician
         create_resp = session.post(
             f"{dashboard_url}/api/technicians",
             json=payload,
             timeout=15
         )
         
-        if 200 <= create_resp.status_code < 300:
-            return {"status": "created"}
-        else:
+        if not (200 <= create_resp.status_code < 300):
             return {
                 "error": f"dashboard responded {create_resp.status_code}",
                 "body": create_resp.text[:200]
             }
+        
+        # Get created technician ID from response
+        try:
+            tech_data = create_resp.json()
+            dashboard_tech_id = tech_data.get("id")
+        except Exception:
+            return {"error": "Failed to parse technician response"}
+        
+        if not dashboard_tech_id:
+            return {"error": "No technician ID in response"}
+        
+        # Step 7: Upload photos using GCS flow
+        photo_count = 0
+        photo_mapping = {
+            "vehicle_photo": "vehicle",
+            "insurance_photo": "insurance", 
+            "registration_photo": "registration"
+        }
+        
+        for record_field, category in photo_mapping.items():
+            photo_path = record.get(record_field)
+            if not photo_path or not os.path.exists(photo_path):
+                continue
+            
+            try:
+                # 7a: Get upload URL from dashboard
+                upload_req = session.post(
+                    f"{dashboard_url}/api/objects/upload",
+                    json={"category": category},
+                    timeout=10
+                )
+                
+                if not upload_req.ok:
+                    continue
+                
+                upload_data = upload_req.json()
+                gcs_url = upload_data.get("uploadURL")
+                
+                if not gcs_url:
+                    continue
+                
+                # 7b: Upload file to GCS
+                with open(photo_path, "rb") as f:
+                    file_content = f.read()
+                
+                # Determine MIME type
+                ext = os.path.splitext(photo_path)[1].lower()
+                mime_type = "image/jpeg" if ext in [".jpg", ".jpeg"] else "image/png"
+                
+                gcs_resp = requests.put(
+                    gcs_url,
+                    data=file_content,
+                    headers={"Content-Type": mime_type},
+                    timeout=30
+                )
+                
+                if not gcs_resp.ok:
+                    continue
+                
+                # 7c: Save photo record to technician
+                photo_payload = {
+                    "uploadURL": gcs_url,
+                    "category": category,
+                    "mimeType": mime_type
+                }
+                
+                photo_resp = session.post(
+                    f"{dashboard_url}/api/technicians/{dashboard_tech_id}/photos",
+                    json=photo_payload,
+                    timeout=10
+                )
+                
+                if photo_resp.ok:
+                    photo_count += 1
+                    
+            except Exception:
+                # Continue with other photos if one fails
+                continue
+        
+        return {"status": "created", "photo_count": photo_count}
             
     except Exception as e:
         return {"error": str(e)}

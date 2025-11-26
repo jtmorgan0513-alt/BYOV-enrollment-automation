@@ -356,13 +356,14 @@ def _enrollments_tab(enrollments):
                             # Convert enrollment to record format
                             record = dict(row)
                             
-                            # Attempt to post to dashboard
-                            sync_result = post_to_dashboard(record)
+                            # Attempt to post to dashboard with enrollment_id
+                            sync_result = post_to_dashboard(record, enrollment_id=enrollment_id)
                             
                             if sync_result.get("status") == "created":
                                 # Mark as approved in database
                                 database.approve_enrollment(enrollment_id)
-                                st.success(f"✅ Enrollment #{enrollment_id} approved and sent to dashboard!")
+                                photo_count = sync_result.get("photo_count", 0)
+                                st.success(f"✅ Enrollment #{enrollment_id} approved! Created on dashboard with {photo_count} photo(s) uploaded.")
                                 st.rerun()
                             elif sync_result.get("status") == "exists":
                                 # Mark as approved even if already exists
