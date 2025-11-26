@@ -324,10 +324,6 @@ def _enrollments_tab(enrollments):
                 
                 st.markdown("<br>", unsafe_allow_html=True)
     
-    # Show selected count
-    if st.session_state.selected_enrollment_ids:
-        st.info(f"🔵 {len(st.session_state.selected_enrollment_ids)} enrollment(s) selected for export")
-
     # -----------------------------
     # Photo Modal (Displayed at Bottom)
     # -----------------------------
@@ -409,24 +405,6 @@ def _enrollments_tab(enrollments):
             if st.button("✖ Close Photo Viewer", key=f"close_modal_bottom_{enrollment_id}", type="primary", use_container_width=True):
                 st.session_state.open_photos_for_id = None
                 st.rerun()
-
-    # -----------------------------
-    # Footer: Enrollment Selector
-    # -----------------------------
-    st.markdown("---")
-    options = [
-        f"#{e.get('id')} — {e.get('full_name')} ({e.get('tech_id')})"
-        for e in enrollments
-    ]
-    sel_label = st.selectbox("Select enrollment for rule actions", options) if options else None
-
-    if sel_label:
-        try:
-            st.session_state.selected_enrollment_id = int(
-                sel_label.split("—")[0].strip("# ").strip()
-            )
-        except:
-            st.session_state.selected_enrollment_id = None
 
 # ------------------------------------------------------------
 # Entry Point
