@@ -8,6 +8,8 @@ import io
 import streamlit as st
 import uuid
 import requests
+import time
+import logging
 
 from streamlit_drawable_canvas import st_canvas
 from PIL import Image
@@ -501,6 +503,36 @@ def post_to_dashboard(record: dict, enrollment_id: int) -> dict:
         photo_count = 0
         failed_uploads = []
 
+        # Simple logging helper for diagnosing dashboard sync issues
+        def dashboard_log(message: str):
+            try:
+                os.makedirs('logs', exist_ok=True)
+                with open(os.path.join('logs', 'dashboard_sync.log'), 'a', encoding='utf-8') as lf:
+                    lf.write(f"{datetime.now().isoformat()} {message}\n")
+            except Exception:
+                pass
+
+        # Generic retry wrapper for operations that return a requests.Response
+        def retry_request(func, attempts=3, backoff_base=0.5):
+            last_exc = None
+            for attempt in range(1, attempts + 1):
+                try:
+                    resp = func()
+                    # If callable returned a Response-like object, check .ok
+                    if hasattr(resp, 'ok'):
+                        if resp.ok:
+                            return resp
+                        else:
+                            raise RuntimeError(f"status_{resp.status_code}")
+                    # Otherwise return value directly
+                    return resp
+                except Exception as e:
+                    last_exc = e
+                    dashboard_log(f"Retry attempt {attempt} failed: {e}")
+                    if attempt < attempts:
+                        time.sleep(backoff_base * (2 ** (attempt - 1)))
+            raise last_exc
+
         # If record doesn't include file paths, try to load from local DB using enrollment_id
         vehicle_paths = []
         insurance_paths = []
@@ -538,6 +570,11 @@ def post_to_dashboard(record: dict, enrollment_id: int) -> dict:
             'registration': registration_paths
         }
 
+        # Upload files to GCS and collect registration entries. We'll attempt a
+        # batch register endpoint on the dashboard first (/photos/batch). If that
+        # endpoint isn't supported or fails, we fall back to per-photo POSTs.
+        uploaded_entries = []  # each: {uploadURL, category, mimeType, path}
+
         for category, paths in category_to_paths.items():
             for photo_path in (paths or []):
                 if not photo_path or not os.path.exists(photo_path):
@@ -545,61 +582,125 @@ def post_to_dashboard(record: dict, enrollment_id: int) -> dict:
                     continue
 
                 try:
-                    # 7a: Get upload URL from dashboard
-                    upload_req = session.post(
-                        f"{dashboard_url}/api/objects/upload",
-                        json={"category": category},
-                        timeout=10
-                    )
-
-                    if not upload_req.ok:
-                        failed_uploads.append({'path': photo_path, 'reason': f'upload_req_status_{upload_req.status_code}'})
+                    # Get upload URL from dashboard (with retries)
+                    try:
+                        upload_req = retry_request(lambda: session.post(
+                            f"{dashboard_url}/api/objects/upload",
+                            json={"category": category},
+                            timeout=10
+                        ), attempts=3, backoff_base=0.6)
+                    except Exception as e:
+                        dashboard_log(f"Failed to get upload URL for {photo_path}: {e}")
+                        failed_uploads.append({'path': photo_path, 'reason': str(e)})
                         continue
 
                     upload_data = upload_req.json()
                     gcs_url = upload_data.get("uploadURL")
                     if not gcs_url:
+                        dashboard_log(f"No uploadURL returned for {photo_path}: {upload_data}")
                         failed_uploads.append({'path': photo_path, 'reason': 'no_upload_url'})
                         continue
 
-                    # 7b: Upload file to GCS (streaming)
+                    # Upload file to GCS (with retries)
                     mime_type, _ = guess_type(photo_path)
                     if not mime_type:
                         mime_type = 'application/octet-stream'
 
-                    with open(photo_path, "rb") as f:
-                        gcs_resp = requests.put(
-                            gcs_url,
-                            data=f,
-                            headers={"Content-Type": mime_type},
-                            timeout=60
-                        )
-
-                    if not gcs_resp.ok:
-                        failed_uploads.append({'path': photo_path, 'reason': f'gcs_status_{gcs_resp.status_code}'})
+                    try:
+                        def do_put():
+                            with open(photo_path, 'rb') as f:
+                                r = requests.put(gcs_url, data=f, headers={"Content-Type": mime_type}, timeout=60)
+                                return r
+                        gcs_resp = retry_request(do_put, attempts=3, backoff_base=0.6)
+                    except Exception as e:
+                        dashboard_log(f"GCS PUT failed for {photo_path}: {e}")
+                        failed_uploads.append({'path': photo_path, 'reason': str(e)})
                         continue
 
-                    # 7c: Save photo record to technician
-                    photo_payload = {
-                        "uploadURL": gcs_url,
-                        "category": category,
-                        "mimeType": mime_type
-                    }
+                    dashboard_log(f"Uploaded {photo_path} to GCS: {gcs_url}")
 
-                    photo_resp = session.post(
-                        f"{dashboard_url}/api/technicians/{dashboard_tech_id}/photos",
-                        json=photo_payload,
-                        timeout=10
-                    )
-
-                    if photo_resp.ok:
-                        photo_count += 1
-                    else:
-                        failed_uploads.append({'path': photo_path, 'reason': f'photo_resp_{photo_resp.status_code}'})
+                    # Append to batch registration list
+                    uploaded_entries.append({
+                        'uploadURL': gcs_url,
+                        'category': category,
+                        'mimeType': mime_type,
+                        'path': photo_path
+                    })
 
                 except Exception as exc:
+                    dashboard_log(f"Unexpected error handling {photo_path}: {exc}")
                     failed_uploads.append({'path': photo_path, 'reason': str(exc)})
                     continue
+
+        # Attempt batch registration if we have entries
+        if uploaded_entries:
+            try:
+                batch_payload = {'photos': [
+                    { 'uploadURL': e['uploadURL'], 'category': e['category'], 'mimeType': e['mimeType'] }
+                    for e in uploaded_entries
+                ]}
+
+                batch_resp = session.post(
+                    f"{dashboard_url}/api/technicians/{dashboard_tech_id}/photos/batch",
+                    json=batch_payload,
+                    timeout=20
+                )
+
+                if batch_resp.ok:
+                    # Assume batch returns list of registered photos or a success status
+                    try:
+                        resp_data = batch_resp.json()
+                        registered = len(resp_data) if isinstance(resp_data, list) else len(uploaded_entries)
+                    except Exception:
+                        registered = len(uploaded_entries)
+                    photo_count += registered
+                    dashboard_log(f"Batch registered {registered} photos for technician {dashboard_tech_id}")
+                else:
+                    dashboard_log(f"Batch registration failed with status {batch_resp.status_code}; falling back to per-photo registration")
+                    # Batch not supported or failed: fall back to per-photo registration
+                    for e in uploaded_entries:
+                        try:
+                            photo_payload = {
+                                'uploadURL': e['uploadURL'],
+                                'category': e['category'],
+                                'mimeType': e['mimeType']
+                            }
+                            try:
+                                photo_resp = retry_request(lambda: session.post(
+                                    f"{dashboard_url}/api/technicians/{dashboard_tech_id}/photos",
+                                    json=photo_payload,
+                                    timeout=10
+                                ), attempts=3, backoff_base=0.6)
+                                photo_count += 1
+                                dashboard_log(f"Registered photo {e.get('path')} for tech {dashboard_tech_id}")
+                            except Exception as reg_exc:
+                                dashboard_log(f"Photo registration failed for {e.get('path')}: {reg_exc}")
+                                failed_uploads.append({'path': e.get('path'), 'reason': str(reg_exc)})
+                        except Exception as exc:
+                            dashboard_log(f"Per-photo registration unexpected error: {exc}")
+                            failed_uploads.append({'path': e.get('path'), 'reason': str(exc)})
+            except Exception as exc:
+                # If batch attempt itself errored, attempt per-photo registration
+                for e in uploaded_entries:
+                    try:
+                        photo_payload = {
+                            'uploadURL': e['uploadURL'],
+                            'category': e['category'],
+                            'mimeType': e['mimeType']
+                        }
+                        try:
+                            photo_resp = retry_request(lambda: session.post(
+                                f"{dashboard_url}/api/technicians/{dashboard_tech_id}/photos",
+                                json=photo_payload,
+                                timeout=10
+                            ), attempts=3, backoff_base=0.6)
+                            photo_count += 1
+                            dashboard_log(f"Registered photo {e.get('path')} for tech {dashboard_tech_id} after batch error")
+                        except Exception as reg_exc:
+                            dashboard_log(f"Per-photo registration failed for {e.get('path')} after batch error: {reg_exc}")
+                            failed_uploads.append({'path': e.get('path'), 'reason': str(reg_exc)})
+                    except Exception as exc2:
+                        failed_uploads.append({'path': e.get('path'), 'reason': str(exc2)})
 
         result = {"status": "created", "photo_count": photo_count}
         if failed_uploads:

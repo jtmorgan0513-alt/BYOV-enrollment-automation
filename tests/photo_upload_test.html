@@ -1,0 +1,51 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Photo Upload Test</title>
+    <style>body{font-family:Arial,sans-serif;padding:20px}label{display:block;margin:8px 0}</style>
+  </head>
+  <body>
+    <h2>Photo Upload Manual Test</h2>
+    <p>This page uses the local app endpoints. Ensure the app is running on the same origin or set <code>baseUrl</code> accordingly.</p>
+
+    <label>Base URL (leave empty for same origin): <input id="baseUrl" style="width:400px" placeholder="http://localhost:8501"/></label>
+    <label>Technician ID: <input id="techId" value="testtech"/></label>
+    <label>Login Tech ID (optional): <input id="loginTech" placeholder="jsmith"/></label>
+    <label>Category: 
+      <select id="category"><option value="vehicle">vehicle</option><option value="insurance">insurance</option><option value="registration">registration</option></select>
+    </label>
+    <label>Files: <input id="files" type="file" multiple/></label>
+
+    <div style="margin-top:12px">
+      <button id="uploadBtn">Upload Selected Files</button>
+    </div>
+
+    <pre id="out" style="margin-top:12px;background:#f7f7f7;padding:12px;max-height:400px;overflow:auto"></pre>
+
+    <script src="/static/photoUploader.js"></script>
+    <script>
+      const out = document.getElementById('out');
+      const setOut = (v) => out.textContent = (typeof v === 'string') ? v : JSON.stringify(v, null, 2);
+
+      document.getElementById('uploadBtn').addEventListener('click', async () => {
+        setOut('Starting...');
+        const baseUrl = document.getElementById('baseUrl').value || '';
+        const techId = document.getElementById('techId').value.trim();
+        const loginTech = document.getElementById('loginTech').value.trim() || null;
+        const category = document.getElementById('category').value;
+        const files = Array.from(document.getElementById('files').files);
+        if (!techId) return setOut('Please enter a Technician ID');
+        if (!files.length) return setOut('Please select at least one file');
+
+        const list = files.map(f => ({ file: f, category }));
+        try {
+          const res = await window.photoUploader.uploadMany({ baseUrl, technicianId: techId, files: list, concurrency: 3, loginTechId: loginTech, attempts: 3 });
+          setOut(res);
+        } catch (err) {
+          setOut('Upload error: ' + err);
+        }
+      });
+    </script>
+  </body>
+</html>
