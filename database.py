@@ -30,7 +30,7 @@ def init_db():
             conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
 
-            # Create enrollments table
+            # Create enrollments table (includes approval tracking columns)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS enrollments (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -48,7 +48,10 @@ def init_db():
                     registration_exp TEXT,
                     template_used TEXT,
                     comment TEXT,
-                    submission_date TEXT DEFAULT CURRENT_TIMESTAMP
+                    submission_date TEXT DEFAULT CURRENT_TIMESTAMP,
+                    approved INTEGER DEFAULT 0,
+                    approved_at TEXT,
+                    approved_by TEXT
                 )
             """)
 
@@ -88,7 +91,33 @@ def init_db():
                 )
             """)
 
+            # Commit initial schema changes
             conn.commit()
+
+            # Idempotent migration: ensure approval tracking columns exist for older DBs
+            try:
+                cursor.execute("PRAGMA table_info(enrollments)")
+                existing_cols = [r[1] for r in cursor.fetchall()]
+                if 'approved' not in existing_cols:
+                    try:
+                        cursor.execute("ALTER TABLE enrollments ADD COLUMN approved INTEGER DEFAULT 0")
+                    except Exception:
+                        pass
+                if 'approved_at' not in existing_cols:
+                    try:
+                        cursor.execute("ALTER TABLE enrollments ADD COLUMN approved_at TEXT")
+                    except Exception:
+                        pass
+                if 'approved_by' not in existing_cols:
+                    try:
+                        cursor.execute("ALTER TABLE enrollments ADD COLUMN approved_by TEXT")
+                    except Exception:
+                        pass
+                conn.commit()
+            except Exception:
+                # Non-fatal: continue even if migration check fails
+                pass
+
             conn.close()
         else:
             # Fallback: ensure a JSON-backed store exists so importing the module
