@@ -364,6 +364,13 @@ def _enrollments_tab(enrollments):
                                 database.approve_enrollment(enrollment_id)
                                 photo_count = sync_result.get("photo_count", 0)
                                 st.success(f"✅ Enrollment #{enrollment_id} approved! Created on dashboard with {photo_count} photo(s) uploaded.")
+                                # Show failed uploads if any
+                                failed = sync_result.get('failed_uploads')
+                                if failed:
+                                    st.warning(f"⚠️ Some photo uploads failed: {len(failed)}. Check logs or retry from the admin UI.")
+                                    with st.expander("Failed Upload Details"):
+                                        for f in failed:
+                                            st.write(f)
                                 st.rerun()
                             elif sync_result.get("status") == "exists":
                                 # Mark as approved even if already exists
