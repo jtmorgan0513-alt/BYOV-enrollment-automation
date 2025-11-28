@@ -21,6 +21,7 @@ import database
 from database import get_enrollment_by_id, get_documents_for_enrollment
 from notifications import send_email_notification
 from admin_dashboard import page_admin_control_center
+import backup_database
 
 
 DATA_FILE = "enrollments.json"
@@ -1148,17 +1149,73 @@ def wizard_step_4():
                     "submission_date": datetime.now().isoformat()
                 }
 
-                enrollment_db_id = database.insert_enrollment(db_record)
+                # Create a backup before making any DB writes
+                try:
+                    backup_database.backup_database()
+                except Exception:
+                    # Non-fatal: continue even if backup fails, but log to console
+                    try:
+                        print("Warning: backup failed before insert/update")
+                    except Exception:
+                        pass
 
-                # Store documents in DB and keep the filepaths for notification
-                for p in vehicle_paths:
-                    database.add_document(enrollment_db_id, 'vehicle', p)
-                for p in insurance_paths:
-                    database.add_document(enrollment_db_id, 'insurance', p)
-                for p in registration_paths:
-                    database.add_document(enrollment_db_id, 'registration', p)
-                # signed PDF
-                database.add_document(enrollment_db_id, 'signature', pdf_output_path)
+                # Check for existing enrollment by tech_id or VIN to avoid duplicates
+                existing = None
+                try:
+                    for e in database.get_all_enrollments():
+                        if str(e.get('tech_id', '')).strip() and e.get('tech_id') == db_record.get('tech_id'):
+                            existing = e
+                            break
+                        if db_record.get('vin') and e.get('vin') and e.get('vin') == db_record.get('vin'):
+                            existing = e
+                            break
+                except Exception:
+                    existing = None
+
+                if existing:
+                    # Update the existing enrollment instead of inserting a duplicate
+                    enrollment_db_id = existing.get('id')
+                    try:
+                        database.update_enrollment(enrollment_db_id, db_record)
+                    except Exception:
+                        # If update fails, fallback to insert
+                        enrollment_db_id = database.insert_enrollment(db_record)
+
+                    # Add documents but avoid duplicates by file path
+                    try:
+                        existing_docs = database.get_documents_for_enrollment(enrollment_db_id)
+                        existing_paths = {d.get('file_path') for d in existing_docs}
+                    except Exception:
+                        existing_paths = set()
+
+                    for p in vehicle_paths:
+                        if p not in existing_paths:
+                            database.add_document(enrollment_db_id, 'vehicle', p)
+                    for p in insurance_paths:
+                        if p not in existing_paths:
+                            database.add_document(enrollment_db_id, 'insurance', p)
+                    for p in registration_paths:
+                        if p not in existing_paths:
+                            database.add_document(enrollment_db_id, 'registration', p)
+                    if pdf_output_path and pdf_output_path not in existing_paths:
+                        database.add_document(enrollment_db_id, 'signature', pdf_output_path)
+
+                    created_new = False
+                else:
+                    # No existing record — insert new enrollment
+                    enrollment_db_id = database.insert_enrollment(db_record)
+
+                    # Store documents in DB and keep the filepaths for notification
+                    for p in vehicle_paths:
+                        database.add_document(enrollment_db_id, 'vehicle', p)
+                    for p in insurance_paths:
+                        database.add_document(enrollment_db_id, 'insurance', p)
+                    for p in registration_paths:
+                        database.add_document(enrollment_db_id, 'registration', p)
+                    # signed PDF
+                    database.add_document(enrollment_db_id, 'signature', pdf_output_path)
+
+                    created_new = True
 
                 # Build application-level record for notifications and UI
                 record = {
