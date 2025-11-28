@@ -423,8 +423,13 @@ def post_to_dashboard(record: dict, enrollment_id: int) -> dict:
         
         submission_date = record.get("submission_date", "")
         date_started = format_date(submission_date) or datetime.now().strftime("%Y-%m-%d")
-        insurance_exp = format_date(record.get("insurance_expiration"))
-        registration_exp = format_date(record.get("registration_expiration"))
+        # Accept multiple possible field names coming from DB or legacy code
+        insurance_exp = format_date(
+            record.get("insurance_exp") or record.get("insurance_expiration") or record.get("insuranceExpiration")
+        )
+        registration_exp = format_date(
+            record.get("registration_exp") or record.get("registration_expiration") or record.get("registrationExpiration")
+        )
         
         # Step 3: Check if technician already exists
         tech_id = record.get("tech_id", "").upper()  # MUST BE UPPERCASE
@@ -494,73 +499,112 @@ def post_to_dashboard(record: dict, enrollment_id: int) -> dict:
         
         # Step 7: Upload photos using GCS flow
         photo_count = 0
-        photo_mapping = {
-            "vehicle_photo": "vehicle",
-            "insurance_photo": "insurance", 
-            "registration_photo": "registration"
+        failed_uploads = []
+
+        # If record doesn't include file paths, try to load from local DB using enrollment_id
+        vehicle_paths = []
+        insurance_paths = []
+        registration_paths = []
+        try:
+            if record.get("vehicle_photos_paths"):
+                vehicle_paths = list(record.get("vehicle_photos_paths") or [])
+            if record.get("insurance_docs_paths"):
+                insurance_paths = list(record.get("insurance_docs_paths") or [])
+            if record.get("registration_docs_paths"):
+                registration_paths = list(record.get("registration_docs_paths") or [])
+
+            # Fallback: fetch from database documents if enrollment_id provided
+            if enrollment_id and not (vehicle_paths or insurance_paths or registration_paths):
+                docs = database.get_documents_for_enrollment(enrollment_id)
+                for d in docs:
+                    p = d.get('file_path')
+                    if not p:
+                        continue
+                    if d.get('doc_type') == 'vehicle':
+                        vehicle_paths.append(p)
+                    elif d.get('doc_type') == 'insurance':
+                        insurance_paths.append(p)
+                    elif d.get('doc_type') == 'registration':
+                        registration_paths.append(p)
+        except Exception:
+            # If DB access fails, continue and attempt uploads for any paths present
+            pass
+
+        from mimetypes import guess_type
+
+        category_to_paths = {
+            'vehicle': vehicle_paths,
+            'insurance': insurance_paths,
+            'registration': registration_paths
         }
-        
-        for record_field, category in photo_mapping.items():
-            photo_path = record.get(record_field)
-            if not photo_path or not os.path.exists(photo_path):
-                continue
-            
-            try:
-                # 7a: Get upload URL from dashboard
-                upload_req = session.post(
-                    f"{dashboard_url}/api/objects/upload",
-                    json={"category": category},
-                    timeout=10
-                )
-                
-                if not upload_req.ok:
+
+        for category, paths in category_to_paths.items():
+            for photo_path in (paths or []):
+                if not photo_path or not os.path.exists(photo_path):
+                    failed_uploads.append({'path': photo_path, 'reason': 'missing'})
                     continue
-                
-                upload_data = upload_req.json()
-                gcs_url = upload_data.get("uploadURL")
-                
-                if not gcs_url:
+
+                try:
+                    # 7a: Get upload URL from dashboard
+                    upload_req = session.post(
+                        f"{dashboard_url}/api/objects/upload",
+                        json={"category": category},
+                        timeout=10
+                    )
+
+                    if not upload_req.ok:
+                        failed_uploads.append({'path': photo_path, 'reason': f'upload_req_status_{upload_req.status_code}'})
+                        continue
+
+                    upload_data = upload_req.json()
+                    gcs_url = upload_data.get("uploadURL")
+                    if not gcs_url:
+                        failed_uploads.append({'path': photo_path, 'reason': 'no_upload_url'})
+                        continue
+
+                    # 7b: Upload file to GCS (streaming)
+                    mime_type, _ = guess_type(photo_path)
+                    if not mime_type:
+                        mime_type = 'application/octet-stream'
+
+                    with open(photo_path, "rb") as f:
+                        gcs_resp = requests.put(
+                            gcs_url,
+                            data=f,
+                            headers={"Content-Type": mime_type},
+                            timeout=60
+                        )
+
+                    if not gcs_resp.ok:
+                        failed_uploads.append({'path': photo_path, 'reason': f'gcs_status_{gcs_resp.status_code}'})
+                        continue
+
+                    # 7c: Save photo record to technician
+                    photo_payload = {
+                        "uploadURL": gcs_url,
+                        "category": category,
+                        "mimeType": mime_type
+                    }
+
+                    photo_resp = session.post(
+                        f"{dashboard_url}/api/technicians/{dashboard_tech_id}/photos",
+                        json=photo_payload,
+                        timeout=10
+                    )
+
+                    if photo_resp.ok:
+                        photo_count += 1
+                    else:
+                        failed_uploads.append({'path': photo_path, 'reason': f'photo_resp_{photo_resp.status_code}'})
+
+                except Exception as exc:
+                    failed_uploads.append({'path': photo_path, 'reason': str(exc)})
                     continue
-                
-                # 7b: Upload file to GCS
-                with open(photo_path, "rb") as f:
-                    file_content = f.read()
-                
-                # Determine MIME type
-                ext = os.path.splitext(photo_path)[1].lower()
-                mime_type = "image/jpeg" if ext in [".jpg", ".jpeg"] else "image/png"
-                
-                gcs_resp = requests.put(
-                    gcs_url,
-                    data=file_content,
-                    headers={"Content-Type": mime_type},
-                    timeout=30
-                )
-                
-                if not gcs_resp.ok:
-                    continue
-                
-                # 7c: Save photo record to technician
-                photo_payload = {
-                    "uploadURL": gcs_url,
-                    "category": category,
-                    "mimeType": mime_type
-                }
-                
-                photo_resp = session.post(
-                    f"{dashboard_url}/api/technicians/{dashboard_tech_id}/photos",
-                    json=photo_payload,
-                    timeout=10
-                )
-                
-                if photo_resp.ok:
-                    photo_count += 1
-                    
-            except Exception:
-                # Continue with other photos if one fails
-                continue
-        
-        return {"status": "created", "photo_count": photo_count}
+
+        result = {"status": "created", "photo_count": photo_count}
+        if failed_uploads:
+            result['failed_uploads'] = failed_uploads
+        return result
             
     except Exception as e:
         return {"error": str(e)}
