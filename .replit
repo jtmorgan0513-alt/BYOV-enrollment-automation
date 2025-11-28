@@ -1,0 +1,5 @@
+run = "streamlit run byov_app.py --server.port $PORT --server.address 0.0.0.0"
+language = "python"
+
+# Optional: set a custom title in the Repl UI
+# title = "BYOV Enrollment"
