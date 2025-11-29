@@ -349,39 +349,64 @@ def _enrollments_tab(enrollments):
                             unsafe_allow_html=True
                         )
                     else:
-                        # Show approve button
+                        # Show approve button (creates technician record only)
                         if st.button("✅ Approve", key=f"approve_{enrollment_id}", type="primary", use_container_width=True):
-                            # Import the dashboard posting function
-                            from byov_app import post_to_dashboard
-                            
-                            # Convert enrollment to record format
+                            from byov_app import create_technician_on_dashboard, upload_photos_for_technician
+
                             record = dict(row)
-                            
-                            # Attempt to post to dashboard with enrollment_id
-                            sync_result = post_to_dashboard(record, enrollment_id=enrollment_id)
-                            
-                            if sync_result.get("status") == "created":
-                                # Mark as approved in database
+
+                            # Create technician on dashboard (text fields only)
+                            create_result = create_technician_on_dashboard(record)
+                            if create_result.get('status') == 'created':
+                                dashboard_id = create_result.get('dashboard_tech_id')
+                                # persist dashboard id for later uploads
+                                try:
+                                    database.set_dashboard_sync_info(enrollment_id, dashboard_tech_id=dashboard_id, report=None)
+                                except Exception:
+                                    pass
+                                # Mark approved locally
                                 database.approve_enrollment(enrollment_id)
-                                photo_count = sync_result.get("photo_count", 0)
-                                st.success(f"✅ Enrollment #{enrollment_id} approved! Created on dashboard with {photo_count} photo(s) uploaded.")
-                                # Show failed uploads if any
-                                failed = sync_result.get('failed_uploads')
+                                st.success(f"✅ Enrollment #{enrollment_id} approved and technician created on dashboard (id: {dashboard_id}).")
+                                st.rerun()
+                            elif create_result.get('error'):
+                                st.error(f"❌ Technician creation error: {create_result.get('error')}")
+                            else:
+                                st.info(f"ℹ️ Result: {create_result}")
+                        
+                        # Add Transmit Photos button to upload documents to the created technician
+                        if st.button("📤 Transmit Photos", key=f"transmit_{enrollment_id}", type="secondary", use_container_width=True):
+                            from byov_app import upload_photos_for_technician
+                            # Attempt to use stored dashboard_tech_id if present
+                            dashboard_id = row.get('dashboard_tech_id')
+                            transmit_result = upload_photos_for_technician(enrollment_id, dashboard_tech_id=dashboard_id)
+                            if transmit_result.get('error'):
+                                st.error(f"❌ Photo transmit error: {transmit_result.get('error')}")
+                            else:
+                                count = transmit_result.get('photo_count', 0)
+                                st.success(f"✅ Transmitted {count} photos for enrollment #{enrollment_id}.")
+                                failed = transmit_result.get('failed_uploads')
                                 if failed:
-                                    st.warning(f"⚠️ Some photo uploads failed: {len(failed)}. Check logs or retry from the admin UI.")
+                                    st.warning(f"⚠️ Some photo uploads failed: {len(failed)}. Use Retry Failed Uploads.")
                                     with st.expander("Failed Upload Details"):
                                         for f in failed:
                                             st.write(f)
                                 st.rerun()
-                            elif sync_result.get("status") == "exists":
-                                # Mark as approved even if already exists
-                                database.approve_enrollment(enrollment_id)
-                                st.info(f"ℹ️ Enrollment #{enrollment_id} already exists on dashboard - marked as approved")
-                                st.rerun()
-                            elif sync_result.get("skipped"):
-                                st.warning(f"⚠️ Dashboard sync skipped: {sync_result.get('skipped')}")
+                        
+                        # Retry Failed Uploads button
+                        if st.button("🔁 Retry Failed Uploads", key=f"retry_{enrollment_id}", type="secondary", use_container_width=True):
+                            from byov_app import retry_failed_uploads
+                            retry_result = retry_failed_uploads(enrollment_id)
+                            if retry_result.get('error'):
+                                st.error(f"❌ Retry error: {retry_result.get('error')}")
                             else:
-                                st.error(f"❌ Dashboard sync error: {sync_result.get('error', 'Unknown error')}")
+                                rc = retry_result.get('retried_count', 0)
+                                rem = retry_result.get('remaining_failed', 0)
+                                st.success(f"🔁 Retried {rc} uploads; {rem} remain failed.")
+                                if retry_result.get('still_failed'):
+                                    with st.expander("Remaining Failed Uploads"):
+                                        for f in retry_result.get('still_failed'):
+                                            st.write(f)
+                                st.rerun()
                 
                 # Delete button
                 with cols[4]:

@@ -151,6 +151,17 @@ def init_db():
                         cursor.execute("ALTER TABLE enrollments ADD COLUMN approved_by TEXT")
                     except Exception:
                         pass
+                # Add dashboard sync columns if missing
+                if 'dashboard_tech_id' not in existing_cols:
+                    try:
+                        cursor.execute("ALTER TABLE enrollments ADD COLUMN dashboard_tech_id TEXT")
+                    except Exception:
+                        pass
+                if 'last_upload_report' not in existing_cols:
+                    try:
+                        cursor.execute("ALTER TABLE enrollments ADD COLUMN last_upload_report TEXT")
+                    except Exception:
+                        pass
                 conn.commit()
             except Exception:
                 # Non-fatal: continue even if migration check fails
@@ -426,6 +437,50 @@ def update_enrollment(enrollment_id, updates: dict):
                         rec['industries'] = v
                     else:
                         rec[k] = v
+                store['enrollments'][i] = rec
+                _save_store(store)
+                return
+
+
+def set_dashboard_sync_info(enrollment_id, dashboard_tech_id: str = None, report: dict = None):
+    """Persist dashboard sync metadata on an enrollment (idempotent).
+
+    - `dashboard_tech_id` is the external dashboard's technician id.
+    - `report` is a dict (e.g., {photo_count: int, failed_uploads: [...]}) and will be stored as JSON text.
+    """
+    if USE_SQLITE and sqlite3 is not None:
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            fields = []
+            values = []
+            if dashboard_tech_id is not None:
+                fields.append("dashboard_tech_id = ?")
+                values.append(str(dashboard_tech_id))
+            if report is not None:
+                try:
+                    report_json = json.dumps(report)
+                except Exception:
+                    report_json = json.dumps({"error": "failed to serialize report"})
+                fields.append("last_upload_report = ?")
+                values.append(report_json)
+            if not fields:
+                return
+            values.append(enrollment_id)
+            cursor.execute(f"UPDATE enrollments SET {', '.join(fields)} WHERE id = ?", values)
+            conn.commit()
+            conn.close()
+        except Exception:
+            # best-effort only
+            pass
+    else:
+        store = _load_store()
+        for i, rec in enumerate(store.get('enrollments', [])):
+            if int(rec.get('id')) == int(enrollment_id):
+                if dashboard_tech_id is not None:
+                    rec['dashboard_tech_id'] = str(dashboard_tech_id)
+                if report is not None:
+                    rec['last_upload_report'] = report
                 store['enrollments'][i] = rec
                 _save_store(store)
                 return

@@ -717,6 +717,292 @@ def post_to_dashboard(record: dict, enrollment_id: int) -> dict:
         return {"error": str(e)}
 
 
+def create_technician_on_dashboard(record: dict) -> dict:
+    """Create a technician on the external dashboard using admin credentials.
+
+    Returns: {status: 'created'|'exists', dashboard_tech_id: str, error: str}
+    """
+    try:
+        dashboard_url = st.secrets.get("replit", {}).get("REPLIT_DASHBOARD_URL") or os.getenv("REPLIT_DASHBOARD_URL")
+        username = st.secrets.get("replit", {}).get("REPLIT_DASHBOARD_USERNAME") or os.getenv("REPLIT_DASHBOARD_USERNAME")
+        password = st.secrets.get("replit", {}).get("REPLIT_DASHBOARD_PASSWORD") or os.getenv("REPLIT_DASHBOARD_PASSWORD")
+    except Exception:
+        dashboard_url = os.getenv("REPLIT_DASHBOARD_URL", "https://byovdashboard.replit.app")
+        username = os.getenv("REPLIT_DASHBOARD_USERNAME", "admin")
+        password = os.getenv("REPLIT_DASHBOARD_PASSWORD", "admin123")
+
+    session = requests.Session()
+    try:
+        login_resp = session.post(f"{dashboard_url}/api/login", json={"username": username, "password": password}, timeout=10)
+        if not login_resp.ok:
+            return {"error": f"Login failed {login_resp.status_code}", "body": login_resp.text[:200]}
+    except Exception as e:
+        return {"error": f"Login exception: {e}"}
+
+    # Format minimal fields same as post_to_dashboard
+    from datetime import datetime
+    def format_date(date_str):
+        if not date_str:
+            return None
+        try:
+            dt = datetime.fromisoformat(date_str)
+            return dt.strftime("%Y-%m-%d")
+        except Exception:
+            return None
+
+    submission_date = record.get("submission_date", "")
+    date_started = format_date(submission_date) or datetime.now().strftime("%Y-%m-%d")
+
+    tech_id = (record.get('tech_id') or '').upper()
+    if not tech_id:
+        return {"error": "missing tech_id"}
+
+    # Format industry
+    industry_raw = record.get('industry') if record.get('industry') is not None else record.get('industries', [])
+    if isinstance(industry_raw, list):
+        industry = ", ".join(industry_raw) if industry_raw else ""
+    else:
+        industry = str(industry_raw) if industry_raw else ""
+
+    referred_by_val = record.get('referred_by') or record.get('referredBy') or ""
+
+    payload = {
+        "name": record.get("full_name"),
+        "techId": tech_id,
+        "region": record.get("state"),
+        "district": record.get("district"),
+        "referredBy": referred_by_val,
+        "enrollmentStatus": "Enrolled",
+        "dateStartedByov": date_started,
+        "vinNumber": record.get("vin"),
+        "vehicleMake": record.get("make"),
+        "vehicleModel": record.get("model"),
+        "vehicleYear": record.get("year"),
+        "industry": industry,
+        "insuranceExpiration": format_date(record.get("insurance_exp")),
+        "registrationExpiration": format_date(record.get("registration_exp"))
+    }
+
+    try:
+        create_resp = session.post(f"{dashboard_url}/api/technicians", json=payload, timeout=15)
+        if not (200 <= create_resp.status_code < 300):
+            return {"error": f"create responded {create_resp.status_code}", "body": create_resp.text[:200]}
+        try:
+            data = create_resp.json()
+            dashboard_tech_id = data.get('id')
+        except Exception:
+            return {"error": "failed to parse create response"}
+        if not dashboard_tech_id:
+            return {"error": "no id returned"}
+        return {"status": "created", "dashboard_tech_id": dashboard_tech_id}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def upload_photos_for_technician(enrollment_id: int, dashboard_tech_id: str = None) -> dict:
+    """Upload photos for a given enrollment to the dashboard technician id.
+
+    If `dashboard_tech_id` is not provided, attempts to look up by tech_id on the dashboard.
+    Returns: {photo_count: int, failed_uploads: [...]}
+    """
+    try:
+        dashboard_url = st.secrets.get("replit", {}).get("REPLIT_DASHBOARD_URL") or os.getenv("REPLIT_DASHBOARD_URL")
+        username = st.secrets.get("replit", {}).get("REPLIT_DASHBOARD_USERNAME") or os.getenv("REPLIT_DASHBOARD_USERNAME")
+        password = st.secrets.get("replit", {}).get("REPLIT_DASHBOARD_PASSWORD") or os.getenv("REPLIT_DASHBOARD_PASSWORD")
+    except Exception:
+        dashboard_url = os.getenv("REPLIT_DASHBOARD_URL", "https://byovdashboard.replit.app")
+        username = os.getenv("REPLIT_DASHBOARD_USERNAME", "admin")
+        password = os.getenv("REPLIT_DASHBOARD_PASSWORD", "admin123")
+
+    session = requests.Session()
+    try:
+        login_resp = session.post(f"{dashboard_url}/api/login", json={"username": username, "password": password}, timeout=10)
+        if not login_resp.ok:
+            return {"error": f"Login failed {login_resp.status_code}", "body": login_resp.text[:200]}
+    except Exception as e:
+        return {"error": f"Login exception: {e}"}
+
+    # Load enrollment record and document paths
+    try:
+        record = database.get_enrollment_by_id(enrollment_id)
+    except Exception:
+        record = None
+
+    if not record:
+        return {"error": "enrollment not found"}
+
+    tech_id = (record.get('tech_id') or '').upper()
+    if not dashboard_tech_id:
+        # Try to find technician by techId on dashboard
+        try:
+            check_resp = session.get(f"{dashboard_url}/api/technicians", params={"techId": tech_id}, timeout=10)
+            if check_resp.ok:
+                try:
+                    existing = check_resp.json()
+                    if isinstance(existing, list) and existing:
+                        dashboard_tech_id = existing[0].get('id')
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    if not dashboard_tech_id:
+        return {"error": "dashboard technician id not provided and lookup failed"}
+
+    # Reuse upload logic from post_to_dashboard
+    photo_count = 0
+    failed_uploads = []
+
+    def dashboard_log(message: str):
+        try:
+            os.makedirs('logs', exist_ok=True)
+            with open(os.path.join('logs', 'dashboard_sync.log'), 'a', encoding='utf-8') as lf:
+                lf.write(f"{datetime.now().isoformat()} {message}\n")
+        except Exception:
+            pass
+
+    def retry_request(func, attempts=3, backoff_base=0.5):
+        last_exc = None
+        for attempt in range(1, attempts + 1):
+            try:
+                resp = func()
+                if hasattr(resp, 'ok'):
+                    if resp.ok:
+                        return resp
+                    else:
+                        raise RuntimeError(f"status_{resp.status_code}")
+                return resp
+            except Exception as e:
+                last_exc = e
+                dashboard_log(f"Retry attempt {attempt} failed: {e}")
+                if attempt < attempts:
+                    time.sleep(backoff_base * (2 ** (attempt - 1)))
+        raise last_exc
+
+    # Collect file paths
+    try:
+        docs = database.get_documents_for_enrollment(enrollment_id)
+        vehicle_paths = [d['file_path'] for d in docs if d['doc_type'] == 'vehicle']
+        insurance_paths = [d['file_path'] for d in docs if d['doc_type'] == 'insurance']
+        registration_paths = [d['file_path'] for d in docs if d['doc_type'] == 'registration']
+    except Exception:
+        vehicle_paths = record.get('vehicle_photos_paths', []) or []
+        insurance_paths = record.get('insurance_docs_paths', []) or []
+        registration_paths = record.get('registration_docs_paths', []) or []
+
+    from mimetypes import guess_type
+
+    category_to_paths = {
+        'vehicle': vehicle_paths,
+        'insurance': insurance_paths,
+        'registration': registration_paths
+    }
+
+    uploaded_entries = []
+    for category, paths in category_to_paths.items():
+        for photo_path in (paths or []):
+            if not photo_path or not os.path.exists(photo_path):
+                failed_uploads.append({'path': photo_path, 'reason': 'missing'})
+                continue
+            try:
+                try:
+                    upload_req = retry_request(lambda: session.post(
+                        f"{dashboard_url}/api/objects/upload",
+                        json={"category": category},
+                        timeout=10
+                    ), attempts=3, backoff_base=0.6)
+                except Exception as e:
+                    dashboard_log(f"Failed to get upload URL for {photo_path}: {e}")
+                    failed_uploads.append({'path': photo_path, 'reason': str(e)})
+                    continue
+
+                upload_data = upload_req.json()
+                gcs_url = upload_data.get("uploadURL")
+                if not gcs_url:
+                    dashboard_log(f"No uploadURL returned for {photo_path}: {upload_data}")
+                    failed_uploads.append({'path': photo_path, 'reason': 'no_upload_url'})
+                    continue
+
+                mime_type, _ = guess_type(photo_path)
+                if not mime_type:
+                    mime_type = 'application/octet-stream'
+
+                try:
+                    def do_put():
+                        with open(photo_path, 'rb') as f:
+                            r = requests.put(gcs_url, data=f, headers={"Content-Type": mime_type}, timeout=60)
+                            return r
+                    gcs_resp = retry_request(do_put, attempts=3, backoff_base=0.6)
+                except Exception as e:
+                    dashboard_log(f"GCS PUT failed for {photo_path}: {e}")
+                    failed_uploads.append({'path': photo_path, 'reason': str(e)})
+                    continue
+
+                dashboard_log(f"Uploaded {photo_path} to GCS: {gcs_url}")
+                uploaded_entries.append({'uploadURL': gcs_url, 'category': category, 'mimeType': mime_type, 'path': photo_path})
+            except Exception as exc:
+                dashboard_log(f"Unexpected error handling {photo_path}: {exc}")
+                failed_uploads.append({'path': photo_path, 'reason': str(exc)})
+                continue
+
+    # Register uploaded entries
+    if uploaded_entries:
+        try:
+            batch_payload = {'photos': [ {'uploadURL': e['uploadURL'], 'category': e['category'], 'mimeType': e['mimeType']} for e in uploaded_entries ]}
+            batch_resp = session.post(f"{dashboard_url}/api/technicians/{dashboard_tech_id}/photos/batch", json=batch_payload, timeout=20)
+            if batch_resp.ok:
+                try:
+                    resp_data = batch_resp.json()
+                    registered = len(resp_data) if isinstance(resp_data, list) else len(uploaded_entries)
+                except Exception:
+                    registered = len(uploaded_entries)
+                photo_count += registered
+                dashboard_log(f"Batch registered {registered} photos for technician {dashboard_tech_id}")
+            else:
+                dashboard_log(f"Batch registration failed with status {batch_resp.status_code}; falling back to per-photo registration")
+                for e in uploaded_entries:
+                    try:
+                        photo_payload = {'uploadURL': e['uploadURL'], 'category': e['category'], 'mimeType': e['mimeType']}
+                        try:
+                            photo_resp = retry_request(lambda: session.post(f"{dashboard_url}/api/technicians/{dashboard_tech_id}/photos", json=photo_payload, timeout=10), attempts=3, backoff_base=0.6)
+                            photo_count += 1
+                            dashboard_log(f"Registered photo {e.get('path')} for tech {dashboard_tech_id}")
+                        except Exception as reg_exc:
+                            dashboard_log(f"Photo registration failed for {e.get('path')}: {reg_exc}")
+                            failed_uploads.append({'path': e.get('path'), 'reason': str(reg_exc)})
+                    except Exception as exc:
+                        dashboard_log(f"Per-photo registration unexpected error: {exc}")
+                        failed_uploads.append({'path': e.get('path'), 'reason': str(exc)})
+        except Exception as exc:
+            for e in uploaded_entries:
+                try:
+                    photo_payload = {'uploadURL': e['uploadURL'], 'category': e['category'], 'mimeType': e['mimeType']}
+                    try:
+                        photo_resp = retry_request(lambda: session.post(f"{dashboard_url}/api/technicians/{dashboard_tech_id}/photos", json=photo_payload, timeout=10), attempts=3, backoff_base=0.6)
+                        photo_count += 1
+                        dashboard_log(f"Registered photo {e.get('path')} for tech {dashboard_tech_id} after batch error")
+                    except Exception as reg_exc:
+                        dashboard_log(f"Per-photo registration failed for {e.get('path')} after batch error: {reg_exc}")
+                        failed_uploads.append({'path': e.get('path'), 'reason': str(reg_exc)})
+                except Exception as exc2:
+                    failed_uploads.append({'path': e.get('path'), 'reason': str(exc2)})
+
+    report = {"photo_count": photo_count}
+    if failed_uploads:
+        report['failed_uploads'] = failed_uploads
+
+    # Persist report to DB for retries
+    try:
+        database.set_dashboard_sync_info(enrollment_id, dashboard_tech_id=dashboard_tech_id, report=report)
+    except Exception:
+        pass
+
+    result = {"photo_count": photo_count}
+    if failed_uploads:
+        result['failed_uploads'] = failed_uploads
+    return result
+
+
 # ------------------------
 # WIZARD STEP FUNCTIONS
 # ------------------------
