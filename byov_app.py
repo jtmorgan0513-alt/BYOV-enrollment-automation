@@ -452,19 +452,25 @@ def post_to_dashboard(record: dict, enrollment_id: int) -> dict:
             except Exception:
                 pass
         
-        # Step 4: Format industry as comma-separated string
-        industry_list = record.get("industry", [])
-        if isinstance(industry_list, list):
-            industry = ", ".join(industry_list)
+        # Step 4: Format industry as comma-separated string (accept 'industry' or 'industries')
+        industry_raw = record.get('industry')
+        if industry_raw is None:
+            industry_raw = record.get('industries', [])
+        if isinstance(industry_raw, list):
+            industry = ", ".join(industry_raw) if industry_raw else ""
         else:
-            industry = str(industry_list) if industry_list else ""
-        
+            industry = str(industry_raw) if industry_raw else ""
+
+        # Referred by (accept either 'referred_by' or 'referredBy')
+        referred_by_val = record.get('referred_by') or record.get('referredBy') or ""
+
         # Step 5: Create technician payload with complete field mapping
         payload = {
             "name": record.get("full_name"),
             "techId": tech_id,  # UPPERCASE
             "region": record.get("state"),
             "district": record.get("district"),
+            "referredBy": referred_by_val,
             "enrollmentStatus": "Enrolled",  # Always "Enrolled" on approval
             "dateStartedByov": date_started,
             "vinNumber": record.get("vin"),
@@ -764,7 +770,7 @@ def wizard_step_1():
     st.subheader("Industry Selection")
     st.write("Select all industries that apply:")
     
-    saved_industries = data.get('industries', [])
+    saved_industries = data.get('industry', data.get('industries', []))
     selected_industries = []
     
     cols = st.columns(4)
@@ -803,6 +809,7 @@ def wizard_step_1():
             'district': district,
             'state': state,
             'referred_by': referred_by,
+            'industry': selected_industries,
             'industries': selected_industries
         })
         st.session_state.wizard_step = 2
@@ -1155,7 +1162,7 @@ def wizard_step_4():
     st.markdown("---")
     with st.container():
         st.markdown("#### 🏭 Industries Selected")
-        industries = data.get('industries', [])
+        industries = data.get('industry', data.get('industries', []))
         if industries:
             st.write(", ".join(industries))
         else:
@@ -1282,7 +1289,9 @@ def wizard_step_4():
                     "district": data['district'],
                     "state": data['state'],
                     "referred_by": data.get('referred_by', ''),
-                    "industries": data.get('industries', []),
+                    # Store both new 'industry' and legacy 'industries' for compatibility
+                    "industry": data.get('industry', data.get('industries', [])),
+                    "industries": data.get('industries', data.get('industry', [])),
                     "year": data['year'],
                     "make": data['make'],
                     "model": data['model'],
@@ -1370,7 +1379,8 @@ def wizard_step_4():
                     "referred_by": data.get('referred_by', ''),
                     "district": data['district'],
                     "state": data['state'],
-                    "industries": data.get('industries', []),
+                    "industry": data.get('industry', data.get('industries', [])),
+                    "industries": data.get('industries', data.get('industry', [])),
                     "vin": data['vin'],
                     "year": data['year'],
                     "make": data['make'],

@@ -190,12 +190,12 @@ def _enrollments_tab(enrollments):
     # -----------------------------
     display_rows = []
     for row in page_rows:
-        # Transform industries to comma-separated string
-        industries_raw = row.get('industries', [])
+        # Transform industry to comma-separated string (accept either 'industry' or 'industries')
+        industries_raw = row.get('industry') if row.get('industry') is not None else row.get('industries', [])
         if isinstance(industries_raw, list):
             industries_str = ", ".join(industries_raw) if industries_raw else "None"
         else:
-            industries_str = str(industries_raw)
+            industries_str = str(industries_raw) if industries_raw else "None"
         
         # Format vehicle info (Year, Make & Model)
         vehicle_info = f"{row.get('year', '')} {row.get('make', '')} {row.get('model', '')}".strip()
@@ -239,12 +239,13 @@ def _enrollments_tab(enrollments):
             'Name': row.get('full_name', 'N/A'),
             'Tech ID': row.get('tech_id', 'N/A'),
             'District': row.get('district', 'N/A'),
+            'Referred By': row.get('referred_by') or row.get('referredBy') or 'N/A',
             'VIN': row.get('vin', 'N/A'),
             'Vehicle': vehicle_info,
-            'Industries': industries_str,
+            'Industry': industries_str,
             'Date Enrolled': date_enrolled,
-            'Reg Exp': reg_exp,
-            'Ins Exp': ins_exp,
+            'Registration Exp. Date': reg_exp,
+            'Insurance Exp. Date': ins_exp,
             'Approved': approved_status
         })
     

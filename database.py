@@ -94,6 +94,44 @@ def init_db():
             # Commit initial schema changes
             conn.commit()
 
+            # Idempotent migration: ensure 'industry' column exists and backfill from 'industries'
+            try:
+                cursor.execute("PRAGMA table_info(enrollments)")
+                existing_cols = [r[1] for r in cursor.fetchall()]
+                if 'industry' not in existing_cols:
+                    try:
+                        cursor.execute("ALTER TABLE enrollments ADD COLUMN industry TEXT")
+                        conn.commit()
+                    except Exception:
+                        pass
+
+                # Backfill: if industry is empty but industries has data, copy it over
+                try:
+                    cursor.execute("SELECT id, industries, industry FROM enrollments")
+                    rows = cursor.fetchall()
+                    for r in rows:
+                        eid = r[0]
+                        industries_val = r[1]
+                        industry_val = r[2]
+                        if (not industry_val or industry_val == '') and industries_val:
+                            try:
+                                # ensure industries_val is valid JSON or plain text
+                                import json as _json
+                                try:
+                                    parsed = _json.loads(industries_val)
+                                except Exception:
+                                    # if it's not JSON, assume comma-separated
+                                    parsed = [x.strip() for x in str(industries_val).split(',') if x.strip()]
+                                new_val = _json.dumps(parsed)
+                                cursor.execute("UPDATE enrollments SET industry = ? WHERE id = ?", (new_val, eid))
+                            except Exception:
+                                pass
+                    conn.commit()
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
             # Idempotent migration: ensure approval tracking columns exist for older DBs
             try:
                 cursor.execute("PRAGMA table_info(enrollments)")
@@ -181,23 +219,29 @@ def insert_enrollment(record):
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
 
-        industries_json = json.dumps(record.get("industries", []))
+        # Prefer new 'industry' key, but fall back to legacy 'industries'
+        industries_list = record.get("industry", record.get("industries", []))
+        industries_json = json.dumps(industries_list)
+        # Also store legacy 'industries' column for backwards compatibility
+        industries_legacy_json = industries_json
+        industry_json = industries_json
 
         cursor.execute("""
             INSERT INTO enrollments (
                 full_name, tech_id, district, state, referred_by,
-                industries, year, make, model, vin,
+                industries, industry, year, make, model, vin,
                 insurance_exp, registration_exp,
                 template_used, comment, submission_date,
                 approved, approved_at, approved_by
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             record.get("full_name"),
             record.get("tech_id"),
             record.get("district"),
             record.get("state"),
             record.get("referred_by"),
-            industries_json,
+            industries_legacy_json,
+            industry_json,
             record.get("year"),
             record.get("make"),
             record.get("model"),
@@ -224,8 +268,9 @@ def insert_enrollment(record):
         eid = cid['enrollment_id']
         rec = dict(record)
         rec['id'] = eid
-        # ensure industries is list
-        rec['industries'] = record.get('industries', [])
+        # ensure industries/industry are lists
+        rec['industries'] = record.get('industries', record.get('industry', []))
+        rec['industry'] = record.get('industry', record.get('industries', []))
         store.setdefault('enrollments', []).insert(0, rec)
         store['counters'] = cid
         _save_store(store)
@@ -251,11 +296,24 @@ def get_all_enrollments():
             results = []
             for row in rows:
                 r = dict(zip(columns, row))
-                if r.get("industries"):
+                # Prefer new 'industry' column if present, but populate both keys for compatibility
+                if r.get("industry"):
+                    try:
+                        r["industry"] = json.loads(r["industry"])
+                    except:
+                        # if it's not JSON, convert comma-separated text to list
+                        try:
+                            r["industry"] = [x.strip() for x in str(r.get("industry", "")).split(',') if x.strip()]
+                        except:
+                            r["industry"] = []
+                    # keep legacy key populated too
+                    r["industries"] = list(r["industry"]) if isinstance(r["industry"], list) else []
+                elif r.get("industries"):
                     try:
                         r["industries"] = json.loads(r["industries"])
                     except:
                         r["industries"] = []
+                    r["industry"] = list(r["industries"]) if isinstance(r["industries"], list) else []
                 results.append(r)
 
             return results
@@ -291,6 +349,16 @@ def get_enrollment_by_id(enrollment_id):
                 record["industries"] = json.loads(record["industries"])
             except:
                 record["industries"] = []
+        # If new 'industry' column exists, prefer that and populate both keys
+        if record.get("industry"):
+            try:
+                record["industry"] = json.loads(record["industry"])
+            except:
+                try:
+                    record["industry"] = [x.strip() for x in str(record.get("industry", "")).split(',') if x.strip()]
+                except:
+                    record["industry"] = []
+            record["industries"] = list(record["industry"]) if isinstance(record["industry"], list) else []
 
         # Load related documents
         cursor.execute("SELECT id, doc_type, file_path FROM documents WHERE enrollment_id = ?", (enrollment_id,))
@@ -325,8 +393,18 @@ def update_enrollment(enrollment_id, updates: dict):
         values = []
 
         for key, value in updates.items():
-            if key == "industries":
-                value = json.dumps(value)
+            if key == "industries" or key == "industry":
+                # store as JSON text
+                value_json = json.dumps(value)
+                # update both columns when 'industry' provided for compatibility
+                if key == 'industry':
+                    fields.append("industry = ?")
+                    values.append(value_json)
+                    fields.append("industries = ?")
+                    values.append(value_json)
+                    continue
+                else:
+                    value = value_json
             fields.append(f"{key} = ?")
             values.append(value)
 
@@ -341,7 +419,11 @@ def update_enrollment(enrollment_id, updates: dict):
             if int(rec.get('id')) == int(enrollment_id):
                 for k, v in updates.items():
                     if k == 'industries':
-                        rec[k] = v
+                        rec['industries'] = v
+                        rec['industry'] = v
+                    elif k == 'industry':
+                        rec['industry'] = v
+                        rec['industries'] = v
                     else:
                         rec[k] = v
                 store['enrollments'][i] = rec

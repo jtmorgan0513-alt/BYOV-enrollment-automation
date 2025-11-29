@@ -42,7 +42,9 @@ def send_email_notification(record, recipients=None, subject=None):
 
     subject = subject or f"New BYOV Enrollment: {record.get('full_name','Unknown')} (Tech {record.get('tech_id','N/A')})"
 
-    industries_str = ", ".join(record.get('industries', [])) if record.get('industries') else "None"
+    # Prefer 'industry' (new column) but fall back to legacy 'industries'
+    industries_list = record.get('industry', record.get('industries', []))
+    industries_str = ", ".join(industries_list) if industries_list else "None"
 
     submission_date = record.get('submission_date', '')
     if submission_date:
