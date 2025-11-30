@@ -1,5 +1,9 @@
 run = "streamlit run byov_app.py --server.port $PORT --server.address 0.0.0.0"
 language = "python"
+modules = ["python-3.12", "nodejs-20", "web"]
+
+[nix]
+channel = "stable-25_05"
 
 # Optional: set a custom title in the Repl UI
 # title = "BYOV Enrollment"
