@@ -412,7 +412,8 @@ def post_to_dashboard(record: dict, enrollment_id: int) -> dict:
         login_resp = session.post(
             f"{dashboard_url}/api/login",
             json=login_payload,
-            timeout=10
+            timeout=10,
+            verify=False
         )
         
         if not login_resp.ok:
@@ -449,7 +450,8 @@ def post_to_dashboard(record: dict, enrollment_id: int) -> dict:
         check_resp = session.get(
             f"{dashboard_url}/api/technicians",
             params={"techId": tech_id},
-            timeout=10
+            timeout=10,
+            verify=False
         )
         
         if check_resp.ok:
@@ -494,7 +496,8 @@ def post_to_dashboard(record: dict, enrollment_id: int) -> dict:
         create_resp = session.post(
             f"{dashboard_url}/api/technicians",
             json=payload,
-            timeout=15
+            timeout=15,
+            verify=False
         )
         
         if not (200 <= create_resp.status_code < 300):
@@ -855,7 +858,7 @@ def post_to_dashboard_single_request(record: dict, enrollment_id: int = None, en
     # POST to external endpoint
     url = dashboard_url.rstrip('/') + endpoint_path
     try:
-        resp = session.post(url, json=payload, timeout=30)
+        resp = session.post(url, json=payload, timeout=30, verify=False)
     except Exception as e:
         return {"error": f"request failed: {e}", "failed_photos": failed_photos}
 
@@ -964,7 +967,7 @@ def create_technician_on_dashboard(record: dict) -> dict:
     }
 
     try:
-        create_resp = session.post(f"{dashboard_url}/api/technicians", json=payload, timeout=15)
+        create_resp = session.post(f"{dashboard_url}/api/technicians", json=payload, timeout=15, verify=False)
         if not (200 <= create_resp.status_code < 300):
             return {"error": f"create responded {create_resp.status_code}", "body": create_resp.text[:200]}
         try:
@@ -1089,7 +1092,8 @@ def upload_photos_for_technician(enrollment_id: int, dashboard_tech_id: str = No
                     upload_req = retry_request(lambda: session.post(
                         f"{dashboard_url}/api/objects/upload",
                         json={"category": category},
-                        timeout=10
+                        timeout=10,
+                        verify=False
                     ), attempts=3, backoff_base=0.6)
                 except Exception as e:
                     dashboard_log(f"Failed to get upload URL for {photo_path}: {e}")
@@ -1129,7 +1133,7 @@ def upload_photos_for_technician(enrollment_id: int, dashboard_tech_id: str = No
     if uploaded_entries:
         try:
             batch_payload = {'photos': [ {'uploadURL': e['uploadURL'], 'category': e['category'], 'mimeType': e['mimeType']} for e in uploaded_entries ]}
-            batch_resp = session.post(f"{dashboard_url}/api/technicians/{dashboard_tech_id}/photos/batch", json=batch_payload, timeout=20)
+            batch_resp = session.post(f"{dashboard_url}/api/technicians/{dashboard_tech_id}/photos/batch", json=batch_payload, timeout=20, verify=False)
             if batch_resp.ok:
                 try:
                     resp_data = batch_resp.json()
