@@ -9,11 +9,14 @@ import base64
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
+from email.mime.image import MIMEImage
 from email.utils import formatdate
 from datetime import datetime
 
 import streamlit as st
 import file_storage
+
+LOGO_PATH = os.path.join(os.path.dirname(__file__), "static", "sears_logo.png")
 
 
 def get_sears_html_template(record, include_logo=True):
@@ -32,17 +35,9 @@ def get_sears_html_template(record, include_logo=True):
     
     logo_section = ""
     if include_logo:
-        logo_section = f"""
+        logo_section = """
         <div style="text-align: center; padding: 20px; background-color: #ffffff; border-bottom: 2px solid #0066CC;">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 120" width="300" height="90" style="display:block; margin: 0 auto;">
-  <!-- Sears text -->
-  <text x="20" y="80" font-family="Arial, sans-serif" font-size="72" font-weight="bold" fill="#0066CC">sears</text>
-  <!-- Home Services text -->
-  <text x="20" y="110" font-family="Arial, sans-serif" font-size="18" font-weight="600" fill="#333333" letter-spacing="4">HOME SERVICES</text>
-  <!-- House icon -->
-  <circle cx="320" cy="50" r="20" fill="#00CC99"/>
-  <path d="M315 50 L320 45 L325 50 L325 60 L315 60 Z" fill="white"/>
-</svg>
+            <img src="cid:sears_logo" alt="Sears Home Services" style="max-width: 250px; height: auto; display: block; margin: 0 auto;">
         </div>
         """
     
@@ -229,14 +224,27 @@ def send_email_notification(record, recipients=None, subject=None, attach_pdf_on
     html_body = get_sears_html_template(record)
     plain_body = get_plain_text_body(record)
 
-    msg = MIMEMultipart('alternative')
+    msg = MIMEMultipart('related')
     msg["From"] = sender or os.getenv("SENDGRID_FROM_EMAIL") or "no-reply@shs.com"
     msg["To"] = ", ".join(recipient_list) if recipient_list else ""
     msg["Date"] = formatdate(localtime=True)
     msg["Subject"] = subject
     
-    msg.attach(MIMEText(plain_body, "plain"))
-    msg.attach(MIMEText(html_body, "html"))
+    msg_alternative = MIMEMultipart('alternative')
+    msg_alternative.attach(MIMEText(plain_body, "plain"))
+    msg_alternative.attach(MIMEText(html_body, "html"))
+    msg.attach(msg_alternative)
+    
+    if os.path.exists(LOGO_PATH):
+        try:
+            with open(LOGO_PATH, 'rb') as f:
+                logo_data = f.read()
+            logo_image = MIMEImage(logo_data, _subtype='png')
+            logo_image.add_header('Content-ID', '<sears_logo>')
+            logo_image.add_header('Content-Disposition', 'inline', filename='sears_logo.png')
+            msg.attach(logo_image)
+        except Exception:
+            pass
 
     files = []
     
@@ -322,8 +330,24 @@ def send_email_notification(record, recipients=None, subject=None, attach_pdf_on
                     ]
                 }
                 
+                attachments = []
+                
+                if os.path.exists(LOGO_PATH):
+                    try:
+                        with open(LOGO_PATH, 'rb') as f:
+                            logo_data = f.read()
+                        b64_logo = base64.b64encode(logo_data).decode()
+                        attachments.append({
+                            "content": b64_logo,
+                            "type": "image/png",
+                            "filename": "sears_logo.png",
+                            "disposition": "inline",
+                            "content_id": "sears_logo"
+                        })
+                    except Exception:
+                        pass
+                
                 if files:
-                    attachments = []
                     for file_path in files:
                         try:
                             content = file_storage.read_file(file_path)
@@ -337,8 +361,9 @@ def send_email_notification(record, recipients=None, subject=None, attach_pdf_on
                                 })
                         except Exception:
                             pass
-                    if attachments:
-                        sg_payload["attachments"] = attachments
+                
+                if attachments:
+                    sg_payload["attachments"] = attachments
                 
                 resp = requests.post(
                     "https://api.sendgrid.com/v3/mail/send",
