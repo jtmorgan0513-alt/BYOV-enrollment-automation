@@ -3019,9 +3019,6 @@ def main():
     admin_mode = st.query_params.get("admin") == "true"
     
     # Navigation callback functions
-    def go_to_diagnostics():
-        st.session_state.current_page = "Diagnostics"
-    
     def go_to_admin():
         st.session_state.current_page = "Admin Control Center"
     
@@ -3033,28 +3030,16 @@ def main():
     
     # Main content area with header icon navigation
     if st.session_state.current_page == "New Enrollment":
-        # Create header with logo and icon buttons
+        # Create header with logo and admin button
         logo_path = "Sears Image.png"
-        header_col1, header_col2, header_col3 = st.columns([8, 1, 1])
+        header_col1, header_col2 = st.columns([9, 1])
         with header_col1:
             if os.path.exists(logo_path):
                 st.image(logo_path, width=200)
         with header_col2:
-            st.button("🔧", key="diagnostics_button", help="Diagnostics & Maintenance", on_click=go_to_diagnostics)
-        with header_col3:
             st.button("👤", key="admin_button", help="Admin Control Center", on_click=go_to_admin)
         
         page_new_enrollment()
-    
-    elif st.session_state.current_page == "Diagnostics":
-        # Header with back button
-        col1, col2 = st.columns([9, 1])
-        with col2:
-            st.button("⬅", key="back_from_diagnostics", help="Back to Enrollment", on_click=go_to_enrollment)
-        
-        # Show diagnostics section
-        from admin_dashboard import show_diagnostics_section
-        show_diagnostics_section()
     
     elif st.session_state.current_page == "Admin Control Center":
         # Header with back button
