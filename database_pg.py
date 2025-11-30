@@ -4,45 +4,59 @@ Replaces SQLite with PostgreSQL for persistent storage across deployments.
 """
 import os
 import json
+import time
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from contextlib import contextmanager
+from functools import wraps
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from psycopg2 import pool
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
-_connection_pool = None
+MAX_RETRIES = 3
+RETRY_DELAY = 0.5
 
 
-def get_pool():
-    """Get or create the connection pool."""
-    global _connection_pool
-    if _connection_pool is None:
-        if not DATABASE_URL:
-            raise RuntimeError("DATABASE_URL environment variable not set")
-        _connection_pool = pool.SimpleConnectionPool(
-            minconn=1,
-            maxconn=10,
-            dsn=DATABASE_URL
-        )
-    return _connection_pool
+def _create_connection():
+    """Create a new database connection with retry logic."""
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL environment variable not set")
+    
+    last_error = None
+    for attempt in range(MAX_RETRIES):
+        try:
+            conn = psycopg2.connect(DATABASE_URL, connect_timeout=10)
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+            return conn
+        except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+            last_error = e
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(RETRY_DELAY * (attempt + 1))
+    
+    raise last_error if last_error else RuntimeError("Failed to connect to database")
 
 
 @contextmanager
 def get_connection():
     """Context manager for database connections."""
-    conn = get_pool().getconn()
+    conn = _create_connection()
     try:
         yield conn
         conn.commit()
     except Exception:
-        conn.rollback()
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         raise
     finally:
-        get_pool().putconn(conn)
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 @contextmanager
@@ -55,6 +69,25 @@ def get_cursor(dict_cursor: bool = True):
             yield cursor
         finally:
             cursor.close()
+
+
+def with_retry(func):
+    """Decorator to retry database operations on connection errors."""
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        last_error = None
+        for attempt in range(MAX_RETRIES):
+            try:
+                return func(*args, **kwargs)
+            except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                last_error = e
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(RETRY_DELAY * (attempt + 1))
+                    continue
+                raise
+        if last_error:
+            raise last_error
+    return wrapper
 
 
 def init_db():
@@ -166,6 +199,7 @@ def insert_enrollment(record: Dict[str, Any]) -> int:
         return result["id"] if isinstance(result, dict) else result[0]
 
 
+@with_retry
 def get_all_enrollments() -> List[Dict[str, Any]]:
     """Return all enrollments ordered by submission date."""
     with get_cursor() as cursor:
@@ -203,6 +237,7 @@ def get_all_enrollments() -> List[Dict[str, Any]]:
         return results
 
 
+@with_retry
 def get_enrollment_by_id(enrollment_id: int) -> Optional[Dict[str, Any]]:
     """Return a single enrollment with its documents."""
     with get_cursor() as cursor:
