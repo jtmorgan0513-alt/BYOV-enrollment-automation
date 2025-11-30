@@ -2915,8 +2915,18 @@ def main():
             max-width: 1200px;
             padding: 1rem;
         }
+        /* Hide sidebar completely */
         [data-testid="stSidebar"] {
-            background-color: var(--secondary-background-color);
+            display: none !important;
+        }
+        [data-testid="stSidebarCollapsedControl"] {
+            display: none !important;
+        }
+        section[data-testid="stSidebar"] {
+            display: none !important;
+        }
+        button[kind="headerNoPadding"] {
+            display: none !important;
         }
         
         /* Header icon buttons */
@@ -2960,16 +2970,16 @@ def main():
             --accent-color: #0d6efd !important;
             --theme-primary: #0d6efd !important;
         }
-        .stButton>button, .stDownloadButton>button, button, [data-testid="stSidebar"] button {
+        .stButton>button, .stDownloadButton>button, button {
             background-color: #0d6efd !important;
             color: #fff !important;
             border: 1px solid #0d6efd !important;
             box-shadow: none !important;
         }
-        .stButton>button:hover, .stDownloadButton>button:hover, button:hover, [data-testid="stSidebar"] button:hover {
+        .stButton>button:hover, .stDownloadButton>button:hover, button:hover {
             background-color: #0b5ed7 !important;
         }
-        .stButton>button:focus, button:focus, [data-testid="stSidebar"] button:focus {
+        .stButton>button:focus, button:focus {
             outline: 3px solid rgba(13,110,253,0.18) !important;
             box-shadow: 0 0 0 3px rgba(13,110,253,0.08) !important;
         }
@@ -3008,46 +3018,31 @@ def main():
     # Check for admin mode
     admin_mode = st.query_params.get("admin") == "true"
     
-    # Sidebar navigation with Sears branding (still available but collapsed)
-    logo_path = "Sears Image.png"
-    if os.path.exists(logo_path):
-        st.sidebar.image(logo_path, width=200)
+    # Navigation callback functions
+    def go_to_diagnostics():
+        st.session_state.current_page = "Diagnostics"
     
-    st.sidebar.markdown("**BYOV Program Management**")
-    st.sidebar.caption("Technician Enrollment")
-    st.sidebar.markdown("---")
+    def go_to_admin():
+        st.session_state.current_page = "Admin Control Center"
     
-    st.sidebar.title("Select a page")
+    def go_to_enrollment():
+        st.session_state.current_page = "New Enrollment"
     
-    page_options = ["New Enrollment", "Admin Control Center"]
-    if admin_mode:
-        page_options.append("Admin Settings")
-    
-    sidebar_page = st.sidebar.radio(
-        "Select a page",
-        page_options,
-        index=page_options.index(st.session_state.current_page) if st.session_state.current_page in page_options else 0,
-    )
-    
-    # Update session state if sidebar selection changed
-    if sidebar_page != st.session_state.current_page:
-        st.session_state.current_page = sidebar_page
-    
-    if admin_mode:
-        st.sidebar.info("🔧 Admin mode enabled")
+    def go_to_settings():
+        st.session_state.current_page = "Admin Settings"
     
     # Main content area with header icon navigation
     if st.session_state.current_page == "New Enrollment":
-        # Create header with icon buttons
-        col1, col2, col3 = st.columns([8, 1, 1])
-        with col2:
-            if st.button("🔧", key="diagnostics_button", help="Diagnostics & Maintenance"):
-                st.session_state.current_page = "Diagnostics"
-                st.rerun()
-        with col3:
-            if st.button("👤", key="admin_button", help="Admin Control Center"):
-                st.session_state.current_page = "Admin Control Center"
-                st.rerun()
+        # Create header with logo and icon buttons
+        logo_path = "Sears Image.png"
+        header_col1, header_col2, header_col3 = st.columns([8, 1, 1])
+        with header_col1:
+            if os.path.exists(logo_path):
+                st.image(logo_path, width=200)
+        with header_col2:
+            st.button("🔧", key="diagnostics_button", help="Diagnostics & Maintenance", on_click=go_to_diagnostics)
+        with header_col3:
+            st.button("👤", key="admin_button", help="Admin Control Center", on_click=go_to_admin)
         
         page_new_enrollment()
     
@@ -3055,9 +3050,7 @@ def main():
         # Header with back button
         col1, col2 = st.columns([9, 1])
         with col2:
-            if st.button("⬅", key="back_from_diagnostics", help="Back to Enrollment"):
-                st.session_state.current_page = "New Enrollment"
-                st.rerun()
+            st.button("⬅", key="back_from_diagnostics", help="Back to Enrollment", on_click=go_to_enrollment)
         
         # Show diagnostics section
         from admin_dashboard import show_diagnostics_section
@@ -3067,9 +3060,7 @@ def main():
         # Header with back button
         col1, col2 = st.columns([9, 1])
         with col2:
-            if st.button("⬅", key="back_button", help="Back to Enrollment"):
-                st.session_state.current_page = "New Enrollment"
-                st.rerun()
+            st.button("⬅", key="back_button", help="Back to Enrollment", on_click=go_to_enrollment)
         
         page_admin_control_center()
     
@@ -3077,9 +3068,7 @@ def main():
         # Header with back button
         col1, col2 = st.columns([9, 1])
         with col2:
-            if st.button("⬅", key="back_button_settings", help="Back to Enrollment"):
-                st.session_state.current_page = "New Enrollment"
-                st.rerun()
+            st.button("⬅", key="back_button_settings", help="Back to Enrollment", on_click=go_to_enrollment)
         
         page_admin_settings()
 
