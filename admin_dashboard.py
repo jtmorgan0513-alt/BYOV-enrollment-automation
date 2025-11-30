@@ -127,6 +127,112 @@ def _enrollments_tab(enrollments):
             except Exception as e:
                 st.error(f"Unexpected error during connectivity test: {e}")
 
+        st.markdown("---")
+        st.caption("**Create a Test Technician on the Dashboard (no enrollment submission required)**")
+        test_tech_id = st.text_input("Test Tech ID", value=f"TEST-{datetime.now().strftime('%Y%m%d%H%M%S')}", key="diag_test_techid")
+        test_full_name = st.text_input("Test Full Name", value="Automated Test Technician", key="diag_test_name")
+        if st.button("➕ Create Test Technician", key="create_test_technician", type="secondary"):
+            try:
+                from byov_app import create_technician_on_dashboard
+                test_record = {
+                    "tech_id": test_tech_id,
+                    "full_name": test_full_name,
+                    "state": "CA",
+                    "district": "00",
+                    "make": "Test",
+                    "model": "Test",
+                    "year": "2025",
+                    "vin": f"{test_tech_id}-VIN",
+                    "submission_date": datetime.now().isoformat()
+                }
+                create_result = create_technician_on_dashboard(test_record)
+                if create_result.get('status') == 'created':
+                    dashboard_id = create_result.get('dashboard_tech_id')
+                    # persist the dashboard id in session state for the diagnostics helper
+                    st.session_state['diag_test_dashboard_id'] = dashboard_id
+                    st.session_state['diag_test_tech_id'] = test_tech_id
+                    st.success(f"✅ Test technician created with dashboard id: {dashboard_id}")
+                elif create_result.get('error'):
+                    st.error(f"❌ Error creating test technician: {create_result.get('error')}")
+                else:
+                    st.info(f"ℹ️ Result: {create_result}")
+            except Exception as e:
+                st.error(f"Unexpected error creating test technician: {e}")
+
+        # Additional diagnostics: attach sample photos to the created test technician
+        st.markdown("---")
+        st.caption("Optional: Upload sample photos and transmit them to the created test technician on the dashboard")
+
+        diag_dashboard_id = st.session_state.get('diag_test_dashboard_id')
+        diag_tech_id = st.session_state.get('diag_test_tech_id')
+
+        if not diag_dashboard_id:
+            st.info("Create a test technician above to enable sample photo upload.")
+        else:
+            st.markdown(f"**Target dashboard technician id:** `{diag_dashboard_id}` (Tech ID: `{diag_tech_id}`)")
+            sample_files = st.file_uploader("Select sample photos to attach (vehicle photos preferred)", accept_multiple_files=True, type=["jpg","jpeg","png","pdf"], key="diag_sample_photos")
+            delete_after = st.checkbox("Delete temporary enrollment and files after transmit", value=False, key="diag_delete_after")
+
+            if sample_files:
+                st.write(f"Selected {len(sample_files)} file(s)")
+                if st.button("📎 Attach & Transmit Sample Photos", key="diag_attach_transmit", type="primary"):
+                    try:
+                        from byov_app import create_upload_folder, save_uploaded_files, upload_photos_for_technician
+                        # Create a temporary enrollment in the DB to hold document records
+                        temp_record = {
+                            'full_name': f"DIAG-{diag_tech_id}",
+                            'tech_id': diag_tech_id,
+                            'district': '00',
+                            'state': 'CA',
+                            'submission_date': datetime.now().isoformat()
+                        }
+                        temp_eid = database.insert_enrollment(temp_record)
+
+                        # Ensure upload folder exists and save files as vehicle docs
+                        upload_base = create_upload_folder(diag_tech_id, str(temp_eid))
+                        saved_paths = save_uploaded_files(sample_files, upload_base, prefix='vehicle')
+
+                        # Persist documents in DB
+                        for p in saved_paths:
+                            database.add_document(temp_eid, 'vehicle', p)
+
+                        # Call upload helper to transmit to dashboard using explicit dashboard id
+                        result = upload_photos_for_technician(temp_eid, dashboard_tech_id=diag_dashboard_id)
+                        if result.get('error'):
+                            st.error(f"❌ Transmit error: {result.get('error')}")
+                        else:
+                            count = result.get('photo_count', 0)
+                            st.success(f"✅ Transmitted {count} photos to dashboard technician {diag_dashboard_id}.")
+                            if result.get('failed_uploads'):
+                                st.warning(f"⚠️ {len(result.get('failed_uploads'))} uploads failed. See details below.")
+                                with st.expander("Failed Upload Details"):
+                                    for f in result.get('failed_uploads'):
+                                        st.write(f)
+
+                        # Optionally delete temp enrollment and files
+                        if delete_after:
+                            try:
+                                # remove files from filesystem
+                                for p in saved_paths:
+                                    try:
+                                        if os.path.exists(p):
+                                            os.remove(p)
+                                    except Exception:
+                                        pass
+                                # remove folder
+                                try:
+                                    if os.path.exists(upload_base):
+                                        shutil.rmtree(upload_base, ignore_errors=True)
+                                except Exception:
+                                    pass
+                                database.delete_enrollment(temp_eid)
+                                st.info(f"Temporary enrollment {temp_eid} and files deleted.")
+                            except Exception:
+                                st.warning("Could not fully delete temporary enrollment/files; please clean up manually if needed.")
+
+                    except Exception as e:
+                        st.error(f"Unexpected error during attach/transmit: {e}")
+
     # -----------------------------
     # No enrollments
     # -----------------------------
@@ -351,7 +457,7 @@ def _enrollments_tab(enrollments):
                     else:
                         # Show approve button (creates technician record only)
                         if st.button("✅ Approve", key=f"approve_{enrollment_id}", type="primary", use_container_width=True):
-                            from byov_app import create_technician_on_dashboard, upload_photos_for_technician
+                            from byov_app import create_technician_on_dashboard
 
                             record = dict(row)
 
@@ -372,41 +478,42 @@ def _enrollments_tab(enrollments):
                                 st.error(f"❌ Technician creation error: {create_result.get('error')}")
                             else:
                                 st.info(f"ℹ️ Result: {create_result}")
-                        
-                        # Add Transmit Photos button to upload documents to the created technician
-                        if st.button("📤 Transmit Photos", key=f"transmit_{enrollment_id}", type="secondary", use_container_width=True):
-                            from byov_app import upload_photos_for_technician
-                            # Attempt to use stored dashboard_tech_id if present
-                            dashboard_id = row.get('dashboard_tech_id')
-                            transmit_result = upload_photos_for_technician(enrollment_id, dashboard_tech_id=dashboard_id)
-                            if transmit_result.get('error'):
-                                st.error(f"❌ Photo transmit error: {transmit_result.get('error')}")
-                            else:
-                                count = transmit_result.get('photo_count', 0)
-                                st.success(f"✅ Transmitted {count} photos for enrollment #{enrollment_id}.")
-                                failed = transmit_result.get('failed_uploads')
-                                if failed:
-                                    st.warning(f"⚠️ Some photo uploads failed: {len(failed)}. Use Retry Failed Uploads.")
-                                    with st.expander("Failed Upload Details"):
-                                        for f in failed:
-                                            st.write(f)
-                                st.rerun()
-                        
-                        # Retry Failed Uploads button
-                        if st.button("🔁 Retry Failed Uploads", key=f"retry_{enrollment_id}", type="secondary", use_container_width=True):
-                            from byov_app import retry_failed_uploads
-                            retry_result = retry_failed_uploads(enrollment_id)
-                            if retry_result.get('error'):
-                                st.error(f"❌ Retry error: {retry_result.get('error')}")
-                            else:
-                                rc = retry_result.get('retried_count', 0)
-                                rem = retry_result.get('remaining_failed', 0)
-                                st.success(f"🔁 Retried {rc} uploads; {rem} remain failed.")
-                                if retry_result.get('still_failed'):
-                                    with st.expander("Remaining Failed Uploads"):
-                                        for f in retry_result.get('still_failed'):
-                                            st.write(f)
-                                st.rerun()
+
+                    # Show Transmit and Retry buttons even after approval so admins can upload or retry photos
+                    # Transmit Photos button
+                    if st.button("📤 Transmit Photos", key=f"transmit_{enrollment_id}", type="secondary", use_container_width=True):
+                        from byov_app import upload_photos_for_technician
+                        # Attempt to use stored dashboard_tech_id if present
+                        dashboard_id = row.get('dashboard_tech_id')
+                        transmit_result = upload_photos_for_technician(enrollment_id, dashboard_tech_id=dashboard_id)
+                        if transmit_result.get('error'):
+                            st.error(f"❌ Photo transmit error: {transmit_result.get('error')}")
+                        else:
+                            count = transmit_result.get('photo_count', 0)
+                            st.success(f"✅ Transmitted {count} photos for enrollment #{enrollment_id}.")
+                            failed = transmit_result.get('failed_uploads')
+                            if failed:
+                                st.warning(f"⚠️ Some photo uploads failed: {len(failed)}. Use Retry Failed Uploads.")
+                                with st.expander("Failed Upload Details"):
+                                    for f in failed:
+                                        st.write(f)
+                            st.rerun()
+
+                    # Retry Failed Uploads button
+                    if st.button("🔁 Retry Failed Uploads", key=f"retry_{enrollment_id}", type="secondary", use_container_width=True):
+                        from byov_app import retry_failed_uploads
+                        retry_result = retry_failed_uploads(enrollment_id)
+                        if retry_result.get('error'):
+                            st.error(f"❌ Retry error: {retry_result.get('error')}")
+                        else:
+                            rc = retry_result.get('retried_count', 0)
+                            rem = retry_result.get('remaining_failed', 0)
+                            st.success(f"🔁 Retried {rc} uploads; {rem} remain failed.")
+                            if retry_result.get('still_failed'):
+                                with st.expander("Remaining Failed Uploads"):
+                                    for f in retry_result.get('still_failed'):
+                                        st.write(f)
+                            st.rerun()
                 
                 # Delete button
                 with cols[4]:
