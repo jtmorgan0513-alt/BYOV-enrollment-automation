@@ -358,7 +358,7 @@ def _enrollments_tab(enrollments):
     # Display table with dataframe
     if display_rows:
         df = pd.DataFrame(display_rows)
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df, width='stretch', hide_index=True)
         
         st.markdown("---")
         st.subheader("Actions")
@@ -408,7 +408,7 @@ def _enrollments_tab(enrollments):
                     is_selected = enrollment_id in st.session_state.selected_enrollment_ids
                     btn_label = "✅ Selected" if is_selected else "⭕ Select"
                     btn_type = "primary" if is_selected else "secondary"
-                    if st.button(btn_label, key=f"select_{enrollment_id}", type=btn_type, use_container_width=True):
+                    if st.button(btn_label, key=f"select_{enrollment_id}", type=btn_type, width='stretch'):
                         if is_selected:
                             st.session_state.selected_enrollment_ids.discard(enrollment_id)
                         else:
@@ -417,7 +417,7 @@ def _enrollments_tab(enrollments):
                 
                 # View Photos button
                 with cols[1]:
-                    if st.button("🖼️ View Photos", key=f"view_photos_{enrollment_id}", use_container_width=True, type="secondary"):
+                    if st.button("🖼️ View Photos", key=f"view_photos_{enrollment_id}", width='stretch', type="secondary"):
                         st.session_state.open_photos_for_id = enrollment_id
                         st.rerun()
                 
@@ -435,11 +435,11 @@ def _enrollments_tab(enrollments):
                             file_name=f"BYOV_{row.get('tech_id', 'enrollment')}_{enrollment_id}.pdf",
                             mime="application/pdf",
                             key=f"download_pdf_{enrollment_id}",
-                            use_container_width=True,
+                            width='stretch',
                             type="secondary"
                         )
                     else:
-                        st.button("📄 No PDF", key=f"no_pdf_{enrollment_id}", disabled=True, use_container_width=True)
+                        st.button("📄 No PDF", key=f"no_pdf_{enrollment_id}", disabled=True, width='stretch')
                 
                 # Approve button - Sends to dashboard
                 with cols[3]:
@@ -456,32 +456,47 @@ def _enrollments_tab(enrollments):
                         )
                     else:
                         # Show approve button (creates technician record only)
-                        if st.button("✅ Approve", key=f"approve_{enrollment_id}", type="primary", use_container_width=True):
-                            from byov_app import create_technician_on_dashboard
+                        if st.button("✅ Approve", key=f"approve_{enrollment_id}", type="primary", width='stretch'):
+                            from byov_app import post_to_dashboard_single_request
 
                             record = dict(row)
 
-                            # Create technician on dashboard (text fields only)
-                            create_result = create_technician_on_dashboard(record)
-                            if create_result.get('status') == 'created':
-                                dashboard_id = create_result.get('dashboard_tech_id')
-                                # persist dashboard id for later uploads
-                                try:
-                                    database.set_dashboard_sync_info(enrollment_id, dashboard_tech_id=dashboard_id, report=None)
-                                except Exception:
-                                    pass
-                                # Mark approved locally
-                                database.approve_enrollment(enrollment_id)
-                                st.success(f"✅ Enrollment #{enrollment_id} approved and technician created on dashboard (id: {dashboard_id}).")
-                                st.rerun()
-                            elif create_result.get('error'):
-                                st.error(f"❌ Technician creation error: {create_result.get('error')}")
+                            # Use the single-request external API to create technician + photos
+                            single_result = post_to_dashboard_single_request(record, enrollment_id=enrollment_id)
+
+                            # Handle errors
+                            if single_result.get('error'):
+                                st.error(f"❌ Technician creation error: {single_result.get('error')}")
                             else:
-                                st.info(f"ℹ️ Result: {create_result}")
+                                status_code = single_result.get('status_code', 0)
+                                resp = single_result.get('response')
+                                # Consider 201 or 200 as success; 207 as partial success
+                                if status_code in (201,) or (200 <= status_code < 300 and status_code != 207):
+                                    # Success — database.set_dashboard_sync_info already attempted in helper
+                                    try:
+                                        database.approve_enrollment(enrollment_id)
+                                    except Exception:
+                                        pass
+                                    st.success(f"✅ Enrollment #{enrollment_id} approved and technician created on dashboard.")
+                                    st.rerun()
+                                elif status_code == 207:
+                                    # Partial success — show details and still mark approved
+                                    try:
+                                        database.approve_enrollment(enrollment_id)
+                                    except Exception:
+                                        pass
+                                    st.warning(f"⚠️ Enrollment #{enrollment_id} created, but some photos failed to attach.")
+                                    if single_result.get('failed_photos'):
+                                        with st.expander("Failed Photo Details"):
+                                            st.json(single_result.get('failed_photos'))
+                                    st.rerun()
+                                else:
+                                    # Non-successful HTTP response
+                                    st.error(f"❌ Dashboard responded with status {status_code}: {resp}")
 
                     # Show Transmit and Retry buttons even after approval so admins can upload or retry photos
                     # Transmit Photos button
-                    if st.button("📤 Transmit Photos", key=f"transmit_{enrollment_id}", type="secondary", use_container_width=True):
+                    if st.button("📤 Transmit Photos", key=f"transmit_{enrollment_id}", type="secondary", width='stretch'):
                         from byov_app import upload_photos_for_technician
                         # Attempt to use stored dashboard_tech_id if present
                         dashboard_id = row.get('dashboard_tech_id')
@@ -500,7 +515,7 @@ def _enrollments_tab(enrollments):
                             st.rerun()
 
                     # Retry Failed Uploads button
-                    if st.button("🔁 Retry Failed Uploads", key=f"retry_{enrollment_id}", type="secondary", use_container_width=True):
+                    if st.button("🔁 Retry Failed Uploads", key=f"retry_{enrollment_id}", type="secondary", width='stretch'):
                         from byov_app import retry_failed_uploads
                         retry_result = retry_failed_uploads(enrollment_id)
                         if retry_result.get('error'):
@@ -520,7 +535,7 @@ def _enrollments_tab(enrollments):
                     is_confirming = st.session_state.delete_confirm.get(enrollment_id, False)
                     btn_label = "⚠️ Confirm Delete" if is_confirming else "🗑️ Delete"
                     
-                    if st.button(btn_label, key=f"delete_{enrollment_id}", type="secondary", use_container_width=True):
+                    if st.button(btn_label, key=f"delete_{enrollment_id}", type="secondary", width='stretch'):
                         if is_confirming:
                             # Second click - execute delete
                             try:
@@ -613,13 +628,13 @@ def _enrollments_tab(enrollments):
                 with col1:
                     st.info(f"📄 {os.path.basename(signature_pdf[0])}")
                 with col2:
-                    st.download_button(
+                        st.download_button(
                         label="⬇️ Download PDF",
                         data=pdf_bytes,
                         file_name=os.path.basename(signature_pdf[0]),
                         mime="application/pdf",
                         key=f"download_pdf_modal_{enrollment_id}",
-                        use_container_width=True
+                        width='stretch'
                     )
                 
                 # Display PDF using iframe
@@ -644,7 +659,7 @@ def _enrollments_tab(enrollments):
                                 p = paths[idx]
                                 if os.path.exists(p):
                                     with col:
-                                        st.image(p, use_container_width=True)
+                                        st.image(p, width='stretch')
                                         st.caption(os.path.basename(p))
                                 else:
                                     with col:
@@ -656,7 +671,7 @@ def _enrollments_tab(enrollments):
         st.markdown("---")
         col1, col2, col3 = st.columns([4, 2, 4])
         with col2:
-            if st.button("✖ Close Photo Viewer", key=f"close_modal_bottom_{enrollment_id}", type="primary", use_container_width=True):
+            if st.button("✖ Close Photo Viewer", key=f"close_modal_bottom_{enrollment_id}", type="primary", width='stretch'):
                 st.session_state.open_photos_for_id = None
                 st.rerun()
 

@@ -717,6 +717,171 @@ def post_to_dashboard(record: dict, enrollment_id: int) -> dict:
         return {"error": str(e)}
 
 
+def post_to_dashboard_single_request(record: dict, enrollment_id: int = None, endpoint_path="/api/external/technicians") -> dict:
+    """
+    Create technician and attach photos in a single request using the external
+    API that accepts base64-embedded photos.
+
+    Payload shape follows the external API the user provided. Photos are
+    included as objects with `category` and `base64` (either data URL or raw
+    base64). Enforces 10MB per photo limit.
+    """
+    try:
+        # Config
+        dashboard_url = st.secrets.get("replit", {}).get("REPLIT_DASHBOARD_URL") or os.getenv("REPLIT_DASHBOARD_URL")
+        username = st.secrets.get("replit", {}).get("REPLIT_DASHBOARD_USERNAME") or os.getenv("REPLIT_DASHBOARD_USERNAME")
+        password = st.secrets.get("replit", {}).get("REPLIT_DASHBOARD_PASSWORD") or os.getenv("REPLIT_DASHBOARD_PASSWORD")
+    except Exception:
+        dashboard_url = os.getenv("REPLIT_DASHBOARD_URL", "https://byovdashboard.replit.app")
+        username = os.getenv("REPLIT_DASHBOARD_USERNAME", "admin")
+        password = os.getenv("REPLIT_DASHBOARD_PASSWORD", "admin123")
+
+    if not dashboard_url:
+        return {"error": "dashboard url not configured"}
+
+    session = requests.Session()
+    try:
+        login_resp = session.post(f"{dashboard_url}/api/login", json={"username": username, "password": password}, timeout=10)
+        if not login_resp.ok:
+            return {"error": f"Login failed {login_resp.status_code}", "body": login_resp.text[:200]}
+    except Exception as e:
+        return {"error": f"Login exception: {e}"}
+
+    # Helper to format dates to YYYY-MM-DD
+    from datetime import datetime
+    def format_date(date_str):
+        if not date_str:
+            return None
+        try:
+            dt = datetime.fromisoformat(date_str)
+            return dt.strftime("%Y-%m-%d")
+        except Exception:
+            return None
+
+    # Tech id
+    tech_id = (record.get('tech_id') or record.get('techId') or '').upper()
+    if not tech_id:
+        return {"error": "missing tech_id"}
+
+    # Build payload mapping according to external API
+    payload = {
+        "name": record.get("full_name") or record.get("name"),
+        "techId": tech_id,
+        "region": record.get("region") or record.get("state"),
+        "district": record.get("district"),
+        "enrollmentStatus": record.get("enrollmentStatus", "Enrolled"),
+        "truckId": record.get("truckId") or record.get("truck_id"),
+        "mobilePhoneNumber": record.get("mobilePhoneNumber") or record.get("mobile") or record.get("phone"),
+        "techEmail": record.get("techEmail") or record.get("email"),
+        "cityState": record.get("cityState"),
+        "vinNumber": record.get("vin") or record.get("vinNumber"),
+        "insuranceExpiration": format_date(record.get("insurance_exp") or record.get("insuranceExpiration")),
+        "registrationExpiration": format_date(record.get("registration_exp") or record.get("registrationExpiration")),
+    }
+
+    # Optional fields: vehicleMake/Model/Year/industry/dateStartedByov
+    if record.get('make'):
+        payload['vehicleMake'] = record.get('make')
+    if record.get('model'):
+        payload['vehicleModel'] = record.get('model')
+    if record.get('year'):
+        payload['vehicleYear'] = record.get('year')
+    industry_raw = record.get('industry') if record.get('industry') is not None else record.get('industries', [])
+    if isinstance(industry_raw, (list, tuple)):
+        payload['industry'] = ", ".join(industry_raw)
+    elif industry_raw:
+        payload['industry'] = str(industry_raw)
+    date_started = format_date(record.get('submission_date') or record.get('dateStartedByov'))
+    if date_started:
+        payload['dateStartedByov'] = date_started
+
+    # Collect documents (file paths) to include as base64 photos
+    docs = []
+    try:
+        if enrollment_id:
+            docs = database.get_documents_for_enrollment(enrollment_id) or []
+        else:
+            docs = record.get('documents') or []
+    except Exception:
+        docs = record.get('documents') or []
+
+    photos = []
+    failed_photos = []
+    import base64 as _b64, mimetypes as _mimetypes
+    MAX_BYTES = 10 * 1024 * 1024  # 10MB
+
+    for d in docs:
+        path = d.get('file_path') if isinstance(d, dict) else None
+        category = d.get('doc_type') or d.get('category') or 'vehicle'
+        if not path or not os.path.exists(path):
+            failed_photos.append({'path': path, 'error': 'missing'})
+            continue
+        try:
+            size = os.path.getsize(path)
+            if size > MAX_BYTES:
+                failed_photos.append({'path': path, 'error': 'size_exceeded', 'size': size})
+                continue
+            with open(path, 'rb') as fh:
+                b = fh.read()
+            raw_b64 = _b64.b64encode(b).decode('ascii')
+            mime = _mimetypes.guess_type(path)[0] or 'application/octet-stream'
+            # Prefer data URL when we have a known mime (matches example)
+            if mime.startswith('image/') or mime == 'application/pdf':
+                data_url = f"data:{mime};base64,{raw_b64}"
+                photos.append({'category': category, 'base64': data_url})
+            else:
+                photos.append({'category': category, 'base64': raw_b64})
+        except Exception as e:
+            failed_photos.append({'path': path, 'error': str(e)})
+
+    if photos:
+        payload['photos'] = photos
+
+    # POST to external endpoint
+    url = dashboard_url.rstrip('/') + endpoint_path
+    try:
+        resp = session.post(url, json=payload, timeout=30)
+    except Exception as e:
+        return {"error": f"request failed: {e}", "failed_photos": failed_photos}
+
+    # Interpret response
+    result = {"status_code": resp.status_code}
+    try:
+        resp_json = resp.json()
+    except Exception:
+        resp_json = {"raw_text": resp.text}
+    result['response'] = resp_json
+    result['photo_count'] = len(photos)
+    if failed_photos:
+        result['failed_photos'] = failed_photos
+
+    # On success/partial, persist dashboard id if present
+    tech_id_returned = None
+    if isinstance(resp_json, dict):
+        # Response may include technician obj or id
+        tech = resp_json.get('technician') or resp_json.get('technicianCreated') or resp_json
+        if isinstance(tech, dict):
+            tech_id_returned = tech.get('id') or tech.get('techId')
+        else:
+            tech_id_returned = resp_json.get('id') or resp_json.get('technicianId')
+
+    if enrollment_id and tech_id_returned:
+        try:
+            report = {"photo_count": len(photos)}
+            if failed_photos:
+                report['failed_uploads'] = failed_photos
+            report['response'] = resp_json
+            database.set_dashboard_sync_info(enrollment_id, dashboard_tech_id=str(tech_id_returned), report=report)
+        except Exception:
+            pass
+
+    # Interpret status codes: 201 -> success, 207 -> partial
+    if resp.status_code in (201, 207) or (200 <= resp.status_code < 300):
+        return result
+    else:
+        return result
+
+
 def create_technician_on_dashboard(record: dict) -> dict:
     """Create a technician on the external dashboard using admin credentials.
 
@@ -1003,6 +1168,178 @@ def upload_photos_for_technician(enrollment_id: int, dashboard_tech_id: str = No
     return result
 
 
+def retry_failed_uploads(enrollment_id: int) -> dict:
+    """Retry previously failed photo uploads recorded in `last_upload_report`.
+
+    Returns: {retried_count: int, remaining_failed: int, still_failed: [...]} 
+    """
+    try:
+        dashboard_url = st.secrets.get("replit", {}).get("REPLIT_DASHBOARD_URL") or os.getenv("REPLIT_DASHBOARD_URL")
+        username = st.secrets.get("replit", {}).get("REPLIT_DASHBOARD_USERNAME") or os.getenv("REPLIT_DASHBOARD_USERNAME")
+        password = st.secrets.get("replit", {}).get("REPLIT_DASHBOARD_PASSWORD") or os.getenv("REPLIT_DASHBOARD_PASSWORD")
+    except Exception:
+        dashboard_url = os.getenv("REPLIT_DASHBOARD_URL", "https://byovdashboard.replit.app")
+        username = os.getenv("REPLIT_DASHBOARD_USERNAME", "admin")
+        password = os.getenv("REPLIT_DASHBOARD_PASSWORD", "admin123")
+
+    session = requests.Session()
+    try:
+        login_resp = session.post(f"{dashboard_url}/api/login", json={"username": username, "password": password}, timeout=10)
+        if not login_resp.ok:
+            return {"error": f"Login failed {login_resp.status_code}", "body": login_resp.text[:200]}
+    except Exception as e:
+        return {"error": f"Login exception: {e}"}
+
+    # Load enrollment and report
+    try:
+        record = database.get_enrollment_by_id(enrollment_id)
+    except Exception:
+        record = None
+    if not record:
+        return {"error": "enrollment not found"}
+
+    # Determine dashboard technician id
+    dashboard_id = record.get('dashboard_tech_id')
+    tech_id = (record.get('tech_id') or '').upper()
+    if not dashboard_id:
+        try:
+            check_resp = session.get(f"{dashboard_url}/api/technicians", params={"techId": tech_id}, timeout=10)
+            if check_resp.ok:
+                try:
+                    existing = check_resp.json()
+                    if isinstance(existing, list) and existing:
+                        dashboard_id = existing[0].get('id')
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    if not dashboard_id:
+        return {"error": "dashboard technician id not found"}
+
+    # Parse last_upload_report
+    last_report = record.get('last_upload_report')
+    if not last_report:
+        return {"error": "no last_upload_report available"}
+    try:
+        if isinstance(last_report, str):
+            report_obj = json.loads(last_report)
+        else:
+            report_obj = last_report
+    except Exception:
+        report_obj = last_report if isinstance(last_report, dict) else {}
+
+    failed = report_obj.get('failed_uploads', []) if isinstance(report_obj, dict) else []
+    if not failed:
+        return {"retried_count": 0, "remaining_failed": 0}
+
+    # Map file paths to document categories
+    try:
+        docs = database.get_documents_for_enrollment(enrollment_id)
+        path_to_category = {d.get('file_path'): d.get('doc_type') for d in docs}
+    except Exception:
+        path_to_category = {}
+
+    from mimetypes import guess_type
+
+    retried = 0
+    still_failed = []
+
+    def dashboard_log(message: str):
+        try:
+            os.makedirs('logs', exist_ok=True)
+            with open(os.path.join('logs', 'dashboard_sync.log'), 'a', encoding='utf-8') as lf:
+                lf.write(f"{datetime.now().isoformat()} {message}\n")
+        except Exception:
+            pass
+
+    def retry_request(func, attempts=3, backoff_base=0.5):
+        last_exc = None
+        for attempt in range(1, attempts + 1):
+            try:
+                resp = func()
+                if hasattr(resp, 'ok'):
+                    if resp.ok:
+                        return resp
+                    else:
+                        raise RuntimeError(f"status_{resp.status_code}")
+                return resp
+            except Exception as e:
+                last_exc = e
+                dashboard_log(f"Retry attempt {attempt} failed: {e}")
+                if attempt < attempts:
+                    time.sleep(backoff_base * (2 ** (attempt - 1)))
+        raise last_exc
+
+    for entry in failed:
+        path = entry.get('path') if isinstance(entry, dict) else None
+        if not path or not os.path.exists(path):
+            still_failed.append({'path': path, 'reason': 'missing'})
+            continue
+
+        category = path_to_category.get(path, 'vehicle')
+        try:
+            try:
+                upload_req = retry_request(lambda: session.post(f"{dashboard_url}/api/objects/upload", json={"category": category}, timeout=10), attempts=3, backoff_base=0.6)
+            except Exception as e:
+                dashboard_log(f"Failed to get upload URL for {path}: {e}")
+                still_failed.append({'path': path, 'reason': str(e)})
+                continue
+
+            upload_data = upload_req.json()
+            gcs_url = upload_data.get('uploadURL')
+            if not gcs_url:
+                dashboard_log(f"No uploadURL returned for {path}: {upload_data}")
+                still_failed.append({'path': path, 'reason': 'no_upload_url'})
+                continue
+
+            mime_type, _ = guess_type(path)
+            if not mime_type:
+                mime_type = 'application/octet-stream'
+
+            try:
+                def do_put():
+                    with open(path, 'rb') as f:
+                        r = requests.put(gcs_url, data=f, headers={"Content-Type": mime_type}, timeout=60)
+                        return r
+                gcs_resp = retry_request(do_put, attempts=3, backoff_base=0.6)
+            except Exception as e:
+                dashboard_log(f"GCS PUT failed for {path}: {e}")
+                still_failed.append({'path': path, 'reason': str(e)})
+                continue
+
+            # Register photo for technician
+            try:
+                photo_payload = {'uploadURL': gcs_url, 'category': category, 'mimeType': mime_type}
+                try:
+                    reg_resp = retry_request(lambda: session.post(f"{dashboard_url}/api/technicians/{dashboard_id}/photos", json=photo_payload, timeout=10), attempts=3, backoff_base=0.6)
+                    retried += 1
+                    dashboard_log(f"Retried and registered photo {path} for tech {dashboard_id}")
+                except Exception as reg_exc:
+                    dashboard_log(f"Photo registration failed for {path}: {reg_exc}")
+                    still_failed.append({'path': path, 'reason': str(reg_exc)})
+            except Exception as exc:
+                dashboard_log(f"Unexpected registration error for {path}: {exc}")
+                still_failed.append({'path': path, 'reason': str(exc)})
+
+        except Exception as exc:
+            dashboard_log(f"Unexpected error retrying {path}: {exc}")
+            still_failed.append({'path': path, 'reason': str(exc)})
+
+    # Update report and persist
+    new_photo_count = (report_obj.get('photo_count', 0) if isinstance(report_obj, dict) else 0) + retried
+    new_report = {"photo_count": new_photo_count}
+    if still_failed:
+        new_report['failed_uploads'] = still_failed
+
+    try:
+        database.set_dashboard_sync_info(enrollment_id, dashboard_tech_id=dashboard_id, report=new_report)
+    except Exception:
+        pass
+
+    return {"retried_count": retried, "remaining_failed": len(still_failed), "still_failed": still_failed}
+
+
 # ------------------------
 # WIZARD STEP FUNCTIONS
 # ------------------------
@@ -1087,7 +1424,7 @@ def wizard_step_1():
     if errors:
         st.warning("Please complete the following:\n" + "\n".join(f"• {msg}" for msg in errors))
     
-    if st.button("Next ➡", disabled=bool(errors), type="primary", use_container_width=True):
+    if st.button("Next ➡", disabled=bool(errors), type="primary", width='stretch'):
         # Save to session state
         st.session_state.wizard_data.update({
             'full_name': full_name,
@@ -1271,12 +1608,12 @@ def wizard_step_2():
     
     col_nav1, col_nav2 = st.columns([1, 1])
     with col_nav1:
-        if st.button("⬅ Back", use_container_width=True):
+        if st.button("⬅ Back", width='stretch'):
             st.session_state.wizard_step = 1
             st.rerun()
     
     with col_nav2:
-        if st.button("Next ➡", disabled=not can_proceed, type="primary", use_container_width=True):
+        if st.button("Next ➡", disabled=not can_proceed, type="primary", width='stretch'):
             # Save to session state
             st.session_state.wizard_data.update({
                 'vin': vin,
@@ -1317,7 +1654,7 @@ def wizard_step_3():
             file_name="BYOV_Policy.pdf",
             mime="application/pdf",
             help="Download and review this document before signing below",
-            use_container_width=True
+            width='stretch'
         )
     else:
         st.error(f"⚠ Template file '{template_file}' not found. Please contact administrator.")
@@ -1403,12 +1740,12 @@ def wizard_step_3():
     
     col_nav1, col_nav2 = st.columns([1, 1])
     with col_nav1:
-        if st.button("⬅ Back", use_container_width=True):
+        if st.button("⬅ Back", width='stretch'):
             st.session_state.wizard_step = 2
             st.rerun()
     
     with col_nav2:
-        if st.button("Next ➡", disabled=not can_proceed, type="primary", use_container_width=True):
+        if st.button("Next ➡", disabled=not can_proceed, type="primary", width='stretch'):
             # Save signature and other data to session state
             st.session_state.wizard_data.update({
                 'acknowledged': acknowledged,
@@ -1512,12 +1849,12 @@ def wizard_step_4():
     
     col_nav1, col_nav2 = st.columns([1, 1])
     with col_nav1:
-        if st.button("⬅ Go Back", use_container_width=True):
+        if st.button("⬅ Go Back", width='stretch'):
             st.session_state.wizard_step = 3
             st.rerun()
     
     with col_nav2:
-        submit_clicked = st.button("✅ Submit Enrollment", type="primary", use_container_width=True)
+        submit_clicked = st.button("✅ Submit Enrollment", type="primary", width='stretch')
     
     if submit_clicked:
         with st.spinner("Processing enrollment..."):
@@ -2276,7 +2613,7 @@ def render_file_gallery_modal(original_row, selected_row, tech_id):
         </div>
         """, unsafe_allow_html=True)
     with col_header2:
-        if st.button("✖ Close", key="close_modal_top", use_container_width=True):
+        if st.button("✖ Close", key="close_modal_top", width='stretch'):
             if 'show_file_modal' in st.session_state:
                 del st.session_state.show_file_modal
             st.rerun()
@@ -2320,12 +2657,12 @@ def render_file_gallery_modal(original_row, selected_row, tech_id):
                             
                             # Thumbnail or icon (optimized for small display)
                             if file_ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp']:
-                                try:
+                                    try:
                                     # Load and create thumbnail to reduce memory usage
                                     img = Image.open(file_path)
                                     # Create thumbnail (max 300px wide to save memory)
                                     img.thumbnail((300, 300), Image.Resampling.LANCZOS)
-                                    st.image(img, use_container_width=True)
+                                    st.image(img, width='stretch')
                                 except:
                                     st.markdown('<div class="file-thumbnail"></div>', unsafe_allow_html=True)
                             elif file_ext == '.pdf':
@@ -2354,7 +2691,7 @@ def render_file_gallery_modal(original_row, selected_row, tech_id):
                                     file_name=file_name,
                                     mime=mime_type,
                                     key=f"dl_{category}_{tech_id}_{i}_{j}",
-                                    use_container_width=True
+                                    width='stretch'
                                 )
     
     # Signed PDF section
@@ -2388,7 +2725,7 @@ def render_file_gallery_modal(original_row, selected_row, tech_id):
     
     # Bottom close button
     st.markdown("---")
-    if st.button("✖ Close File Viewer", key="close_modal_bottom", use_container_width=True):
+    if st.button("✖ Close File Viewer", key="close_modal_bottom", width='stretch'):
         if 'show_file_modal' in st.session_state:
             del st.session_state.show_file_modal
         st.rerun()
