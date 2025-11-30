@@ -5,12 +5,11 @@ import database
 from notifications import send_email_notification
 import shutil
 from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
+import file_storage
 
-# Disable SSL certificate verification warnings
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# Disable SSL certificate verification globally
 import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
 
@@ -27,31 +26,15 @@ def _get_all_enrollments():
 
 
 def _get_all_sent_notifications():
-    # Returns list of dicts: {id, enrollment_id, rule_id, sent_at}
-    # SQLite direct query for efficiency; fallback aggregates JSON store.
-    if database.USE_SQLITE and sqlite3:
-        try:
-            conn = sqlite3.connect(database.DB_PATH)
-            cur = conn.cursor()
-            cur.execute("SELECT id,enrollment_id,rule_id,sent_at FROM notifications_sent ORDER BY sent_at DESC")
-            rows = cur.fetchall()
-            conn.close()
-            return [
-                {"id": r[0], "enrollment_id": r[1], "rule_id": r[2], "sent_at": r[3]} for r in rows
-            ]
-        except Exception:
-            return []
-    else:
-        # Fallback: iterate each enrollment and collect
-        sent = []
-        enrolls = _get_all_enrollments()
-        for e in enrolls:
-            eid = e.get('id')
-            for s in database.get_sent_notifications(eid):
-                sent.append(s)
-        # Sort newest first
-        sent.sort(key=lambda x: x.get('sent_at',''), reverse=True)
-        return sent
+    """Returns list of dicts: {id, enrollment_id, rule_id, sent_at}"""
+    sent = []
+    enrolls = _get_all_enrollments()
+    for e in enrolls:
+        eid = e.get('id')
+        for s in database.get_sent_notifications(eid):
+            sent.append(s)
+    sent.sort(key=lambda x: x.get('sent_at',''), reverse=True)
+    return sent
 
 
 # ------------------------------------------------------------
@@ -61,14 +44,27 @@ def _overview_tab(enrollments):
     st.subheader("Overview")
 
     total_enrollments = len(enrollments)
-    storage_mode = "SQLite" if database.USE_SQLITE else "JSON Fallback"
+    
+    if database.USE_POSTGRES if hasattr(database, 'USE_POSTGRES') else False:
+        db_mode = "PostgreSQL (Persistent)"
+    elif database.USE_SQLITE:
+        db_mode = "SQLite (Local)"
+    else:
+        db_mode = "JSON Fallback"
+    
+    file_mode = file_storage.get_storage_mode()
 
     c1, c2 = st.columns(2)
     c1.metric("Total Enrollments", total_enrollments)
-    c2.metric("Storage Mode", storage_mode)
-
-    if not database.USE_SQLITE:
-        st.warning("Running in JSON fallback storage mode. Some features may be limited.")
+    c2.metric("Database", db_mode)
+    
+    c3, c4 = st.columns(2)
+    c3.metric("File Storage", file_mode.split(" ")[0])
+    
+    if "persistent" in db_mode.lower() and "persistent" in file_mode.lower():
+        st.success("Data will persist across app restarts and deployments.")
+    else:
+        st.warning("Some data may not persist across deployments. Configure Object Storage for full persistence.")
     
     st.markdown("---")
     st.info("Use the Enrollments tab to view and manage all enrollments.")
@@ -329,49 +325,38 @@ def _enrollments_tab(enrollments):
                     
                     if st.button(btn_label, key=f"delete_{enrollment_id}", type="secondary", width='stretch'):
                         if is_confirming:
-                            # Second click - execute delete
                             try:
                                 tech_id = row.get('tech_id', 'unknown')
-                                
-                                # Get documents
                                 docs = database.get_documents_for_enrollment(enrollment_id)
                                 
-                                # Delete files
                                 for doc in docs:
                                     file_path = doc.get('file_path')
-                                    if file_path and os.path.exists(file_path):
-                                        try:
-                                            os.remove(file_path)
-                                        except Exception:
-                                            pass
+                                    if file_path:
+                                        file_storage.delete_file(file_path)
                                 
-                                # Delete upload folder
-                                if os.path.exists('uploads'):
-                                    upload_folder_prefix = f"{tech_id}_"
-                                    for folder in os.listdir('uploads'):
-                                        if folder.startswith(upload_folder_prefix):
-                                            folder_path = os.path.join('uploads', folder)
-                                            if os.path.isdir(folder_path):
+                                if not file_storage.USE_OBJECT_STORAGE:
+                                    if os.path.exists('uploads'):
+                                        upload_folder_prefix = f"{tech_id}_"
+                                        for folder in os.listdir('uploads'):
+                                            if folder.startswith(upload_folder_prefix):
+                                                folder_path = os.path.join('uploads', folder)
+                                                if os.path.isdir(folder_path):
+                                                    try:
+                                                        shutil.rmtree(folder_path, ignore_errors=True)
+                                                    except Exception:
+                                                        pass
+                                    
+                                    if os.path.exists('pdfs'):
+                                        pdf_prefix = f"{tech_id}_"
+                                        for pdf_file in os.listdir('pdfs'):
+                                            if pdf_file.startswith(pdf_prefix) and pdf_file.endswith('.pdf'):
+                                                pdf_path = os.path.join('pdfs', pdf_file)
                                                 try:
-                                                    shutil.rmtree(folder_path, ignore_errors=True)
+                                                    os.remove(pdf_path)
                                                 except Exception:
                                                     pass
                                 
-                                # Delete PDF
-                                if os.path.exists('pdfs'):
-                                    pdf_prefix = f"{tech_id}_"
-                                    for pdf_file in os.listdir('pdfs'):
-                                        if pdf_file.startswith(pdf_prefix) and pdf_file.endswith('.pdf'):
-                                            pdf_path = os.path.join('pdfs', pdf_file)
-                                            try:
-                                                os.remove(pdf_path)
-                                            except Exception:
-                                                pass
-                                
-                                # Delete from database
                                 database.delete_enrollment(enrollment_id)
-                                
-                                # Clear confirmation state
                                 st.session_state.delete_confirm.pop(enrollment_id, None)
                                 st.success(f"✅ Deleted enrollment {enrollment_id}")
                                 st.rerun()
@@ -379,7 +364,6 @@ def _enrollments_tab(enrollments):
                             except Exception as e:
                                 st.error(f"Error deleting enrollment {enrollment_id}: {e}")
                         else:
-                            # First click - set confirmation
                             st.session_state.delete_confirm[enrollment_id] = True
                             st.rerun()
                 
@@ -410,30 +394,30 @@ def _enrollments_tab(enrollments):
 
         tabs = st.tabs(["📄 Signed PDF", "🚗 Vehicle", "📋 Registration", "🛡️ Insurance"])
         
-        # PDF Tab
         with tabs[0]:
-            if signature_pdf and os.path.exists(signature_pdf[0]):
-                with open(signature_pdf[0], 'rb') as f:
-                    pdf_bytes = f.read()
-                
-                col1, col2 = st.columns([3, 1])
-                with col1:
-                    st.info(f"📄 {os.path.basename(signature_pdf[0])}")
-                with col2:
+            if signature_pdf and file_storage.file_exists(signature_pdf[0]):
+                try:
+                    pdf_bytes = file_storage.read_file(signature_pdf[0])
+                    
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        st.info(f"📄 {os.path.basename(signature_pdf[0])}")
+                    with col2:
                         st.download_button(
-                        label="⬇️ Download PDF",
-                        data=pdf_bytes,
-                        file_name=os.path.basename(signature_pdf[0]),
-                        mime="application/pdf",
-                        key=f"download_pdf_modal_{enrollment_id}",
-                        width='stretch'
-                    )
-                
-                # Display PDF using iframe
-                import base64
-                base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
-                pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="800" type="application/pdf"></iframe>'
-                st.markdown(pdf_display, unsafe_allow_html=True)
+                            label="⬇️ Download PDF",
+                            data=pdf_bytes,
+                            file_name=os.path.basename(signature_pdf[0]),
+                            mime="application/pdf",
+                            key=f"download_pdf_modal_{enrollment_id}",
+                            width='stretch'
+                        )
+                    
+                    import base64
+                    base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
+                    pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="800" type="application/pdf"></iframe>'
+                    st.markdown(pdf_display, unsafe_allow_html=True)
+                except Exception as e:
+                    st.error(f"Error loading PDF: {e}")
             else:
                 st.warning("No signed PDF found for this enrollment.")
         
@@ -449,10 +433,14 @@ def _enrollments_tab(enrollments):
                             idx = i + j
                             if idx < len(paths):
                                 p = paths[idx]
-                                if os.path.exists(p):
+                                if file_storage.file_exists(p):
                                     with col:
-                                        st.image(p, width='stretch')
-                                        st.caption(os.path.basename(p))
+                                        try:
+                                            img_bytes = file_storage.read_file(p)
+                                            st.image(img_bytes, width=250)
+                                            st.caption(os.path.basename(p))
+                                        except Exception as e:
+                                            st.error(f"Error loading: {e}")
                                 else:
                                     with col:
                                         st.error(f"Missing: {p}")

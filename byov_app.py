@@ -24,14 +24,13 @@ from PIL import Image
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
-# AgGrid is optional; the admin dashboard uses a server-side table by default
 
-# Shared DB module (SQLite)
 import database
 from database import get_enrollment_by_id, get_documents_for_enrollment
 from notifications import send_email_notification
 from admin_dashboard import page_admin_control_center
 import backup_database
+import file_storage
 
 
 DATA_FILE = "enrollments.json"
@@ -91,12 +90,11 @@ def save_enrollments(records):
 
 
 def delete_enrollment(identifier: str) -> tuple[bool, str]:
-    """Delete enrollment and associated files from DB and filesystem.
+    """Delete enrollment and associated files from DB and storage.
 
     `identifier` may be the numeric enrollment id or the technician id.
     """
     try:
-        # Find enrollment by id or tech_id
         rows = database.get_all_enrollments()
         target = None
         for r in rows:
@@ -109,29 +107,24 @@ def delete_enrollment(identifier: str) -> tuple[bool, str]:
 
         enrollment_id = target.get('id')
 
-        # collect file paths from documents
         docs = database.get_documents_for_enrollment(enrollment_id)
         files_to_delete = [d['file_path'] for d in docs if d.get('file_path')]
 
         deleted_files = 0
         for p in files_to_delete:
-            if p and os.path.exists(p):
-                try:
-                    os.remove(p)
-                    deleted_files += 1
-                except Exception:
-                    pass
+            if file_storage.delete_file(p):
+                deleted_files += 1
 
-        # delete parent upload folder if present (assumes uploaded files in uploads/ID_*/...)
-        if files_to_delete:
-            upload_dir = os.path.dirname(os.path.dirname(files_to_delete[0]))
-            if os.path.exists(upload_dir) and os.path.isdir(upload_dir):
-                try:
-                    shutil.rmtree(upload_dir)
-                except Exception:
-                    pass
+        if files_to_delete and not file_storage.USE_OBJECT_STORAGE:
+            first_file = files_to_delete[0]
+            if not file_storage.is_object_storage_path(first_file):
+                upload_dir = os.path.dirname(os.path.dirname(first_file))
+                if os.path.exists(upload_dir) and os.path.isdir(upload_dir):
+                    try:
+                        shutil.rmtree(upload_dir)
+                    except Exception:
+                        pass
 
-        # delete from DB (documents cascade)
         database.delete_enrollment(enrollment_id)
 
         return True, f"✅ Successfully deleted enrollment ID {enrollment_id} and {deleted_files} associated files."
@@ -146,69 +139,13 @@ def sanitize_filename(name: str) -> str:
 
 
 def create_upload_folder(tech_id: str, record_id: str) -> str:
-    safe_tech_id = sanitize_filename(tech_id)
-    folder_name = f"{safe_tech_id}_{record_id}"
-    base_path = os.path.join("uploads", folder_name)
-    os.makedirs(os.path.join(base_path, "vehicle"), exist_ok=True)
-    os.makedirs(os.path.join(base_path, "insurance"), exist_ok=True)
-    os.makedirs(os.path.join(base_path, "registration"), exist_ok=True)
-    os.makedirs("pdfs", exist_ok=True)
-    return base_path
+    """Create upload folder using file_storage module."""
+    return file_storage.create_upload_folder(tech_id, record_id)
 
 
 def save_uploaded_files(uploaded_files, folder_path: str, prefix: str) -> list:
-    """Save uploaded files and compress images for email notifications."""
-    file_paths = []
-    for idx, uploaded_file in enumerate(uploaded_files, 1):
-        ext = os.path.splitext(uploaded_file.name)[1].lower()
-        filename = f"{prefix}_{idx}{ext}"
-        path = os.path.join(folder_path, filename)
-        
-        # Compress images (JPG, JPEG, PNG) for email notifications
-        if ext in ['.jpg', '.jpeg', '.png']:
-            try:
-                img = Image.open(uploaded_file)
-                
-                # Convert to RGB if needed (for PNG with alpha)
-                if img.mode in ('RGBA', 'LA', 'P'):
-                    background = Image.new('RGB', img.size, (255, 255, 255))
-                    if img.mode == 'P':
-                        img = img.convert('RGBA')
-                    background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
-                    img = background
-                
-                # Resize for email-friendly size (max 1200px on longest side)
-                max_size = 1200
-                if max(img.size) > max_size:
-                    img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
-                
-                # Save with higher compression for smaller file size
-                # Quality 75 provides good balance between size and quality
-                img.save(path, 'JPEG', quality=75, optimize=True)
-                
-                # Log file size reduction
-                try:
-                    original_size = len(uploaded_file.getvalue())
-                    compressed_size = os.path.getsize(path)
-                    reduction = ((original_size - compressed_size) / original_size) * 100
-                    if reduction > 0:
-                        print(f"Compressed {filename}: {original_size/1024:.1f}KB → {compressed_size/1024:.1f}KB ({reduction:.1f}% reduction)")
-                except Exception:
-                    pass
-                
-            except Exception as e:
-                # If compression fails, save original
-                print(f"Warning: Image compression failed for {filename}: {e}")
-                with open(path, 'wb') as f:
-                    uploaded_file.seek(0)
-                    f.write(uploaded_file.getbuffer())
-        else:
-            # Non-image files: save as-is
-            with open(path, 'wb') as f:
-                f.write(uploaded_file.getbuffer())
-        
-        file_paths.append(path)
-    return file_paths
+    """Save uploaded files using file_storage module."""
+    return file_storage.save_uploaded_files(uploaded_files, folder_path, prefix)
 
 
 def generate_signed_pdf(template_path: str, signature_image, output_path: str,
