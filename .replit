@@ -1,6 +1,6 @@
 run = "streamlit run byov_app.py --server.port $PORT --server.address 0.0.0.0"
 language = "python"
-modules = ["nodejs-20", "web", "python-3.11"]
+modules = ["nodejs-20", "web", "python-3.11", "postgresql-16"]
 
 [nix]
 channel = "stable-25_05"
@@ -34,13 +34,10 @@ outputType = "webview"
 localPort = 5000
 externalPort = 80
 
-[[ports]]
-localPort = 35047
-externalPort = 3000
+[userenv]
 
-[[ports]]
-localPort = 45381
-externalPort = 3001
+[userenv.shared]
+SENDGRID_FROM_EMAIL = "notifications@shs.com"
 
 # Optional: set a custom title in the Repl UI
 # title = "BYOV Enrollment"

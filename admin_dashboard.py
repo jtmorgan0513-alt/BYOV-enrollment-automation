@@ -2,7 +2,7 @@ import os
 import streamlit as st
 from datetime import datetime
 import database
-from notifications import send_email_notification
+from notifications import send_email_notification, send_pdf_to_hr, get_email_config_status
 import shutil
 from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 import file_storage
@@ -53,13 +53,17 @@ def _overview_tab(enrollments):
         db_mode = "JSON Fallback"
     
     file_mode = file_storage.get_storage_mode()
+    email_status = get_email_config_status()
 
-    c1, c2 = st.columns(2)
+    c1, c2, c3 = st.columns(3)
     c1.metric("Total Enrollments", total_enrollments)
     c2.metric("Database", db_mode)
+    c3.metric("Email", email_status['primary_method'])
     
-    c3, c4 = st.columns(2)
-    c3.metric("File Storage", file_mode.split(" ")[0])
+    c4, c5, c6 = st.columns(3)
+    c4.metric("File Storage", file_mode.split(" ")[0])
+    if email_status['sendgrid_configured']:
+        c5.metric("SendGrid From", email_status['sendgrid_from'][:20] + "..." if len(email_status['sendgrid_from']) > 20 else email_status['sendgrid_from'])
     
     if "persistent" in db_mode.lower() and "persistent" in file_mode.lower():
         st.success("Data will persist across app restarts and deployments.")
@@ -68,6 +72,117 @@ def _overview_tab(enrollments):
     
     st.markdown("---")
     st.info("Use the Enrollments tab to view and manage all enrollments.")
+
+
+def _notification_settings_tab():
+    """Notification rules management tab"""
+    st.subheader("Email Notification Settings")
+    
+    email_status = get_email_config_status()
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("#### Current Configuration")
+        if email_status['sendgrid_configured']:
+            st.success(f"SendGrid: Configured ({email_status['sendgrid_from']})")
+        else:
+            st.warning("SendGrid: Not configured (add SENDGRID_API_KEY secret)")
+        
+        if email_status['gmail_configured']:
+            st.success(f"Gmail SMTP: Configured ({email_status['gmail_sender']})")
+        else:
+            st.info("Gmail SMTP: Not configured (optional fallback)")
+        
+        st.info(f"Primary Method: {email_status['primary_method']}")
+    
+    with col2:
+        st.markdown("#### Setup Instructions")
+        st.markdown("""
+        **To enable SendGrid:**
+        1. Get your API key from SendGrid
+        2. Add `SENDGRID_API_KEY` to Secrets
+        3. `SENDGRID_FROM_EMAIL` is already set
+        
+        **To enable Gmail SMTP:**
+        1. Create a Gmail App Password
+        2. Add to Streamlit secrets.toml
+        """)
+    
+    st.markdown("---")
+    
+    st.markdown("#### Notification Rules")
+    st.info("Configure which departments receive email notifications for different events.")
+    
+    rules = database.get_all_notification_rules()
+    
+    with st.expander("Add New Notification Rule", expanded=len(rules) == 0):
+        with st.form("add_notification_rule"):
+            rule_name = st.text_input("Rule Name", placeholder="e.g., HR Notification")
+            
+            trigger = st.selectbox("Trigger Event", [
+                "new_enrollment",
+                "enrollment_approved", 
+                "insurance_expiring_30days",
+                "insurance_expiring_7days",
+                "registration_expiring_30days",
+                "registration_expiring_7days"
+            ], format_func=lambda x: {
+                "new_enrollment": "New Enrollment Submitted",
+                "enrollment_approved": "Enrollment Approved",
+                "insurance_expiring_30days": "Insurance Expiring (30 days)",
+                "insurance_expiring_7days": "Insurance Expiring (7 days)",
+                "registration_expiring_30days": "Registration Expiring (30 days)",
+                "registration_expiring_7days": "Registration Expiring (7 days)"
+            }.get(x, x))
+            
+            days_before = None
+            if "expiring" in trigger:
+                days_before = int(trigger.split("_")[-1].replace("days", ""))
+            
+            recipients = st.text_input("Recipients (comma-separated emails)", 
+                                       placeholder="hr@shs.com, fleet@shs.com")
+            
+            if st.form_submit_button("Add Rule", type="primary"):
+                if rule_name and recipients:
+                    try:
+                        database.add_notification_rule(rule_name, trigger, days_before, recipients)
+                        st.success(f"Rule '{rule_name}' added successfully!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error adding rule: {e}")
+                else:
+                    st.warning("Please fill in all required fields.")
+    
+    if rules:
+        st.markdown("#### Active Rules")
+        for rule in rules:
+            with st.container():
+                col1, col2, col3, col4 = st.columns([3, 2, 3, 1])
+                with col1:
+                    st.write(f"**{rule['rule_name']}**")
+                with col2:
+                    trigger_display = {
+                        "new_enrollment": "New Enrollment",
+                        "enrollment_approved": "Approved",
+                        "insurance_expiring_30days": "Insurance -30d",
+                        "insurance_expiring_7days": "Insurance -7d",
+                        "registration_expiring_30days": "Reg. -30d",
+                        "registration_expiring_7days": "Reg. -7d"
+                    }.get(rule['trigger'], rule['trigger'])
+                    st.write(trigger_display)
+                with col3:
+                    st.write(rule['recipients'][:40] + "..." if len(rule['recipients']) > 40 else rule['recipients'])
+                with col4:
+                    if st.button("🗑️", key=f"delete_rule_{rule['id']}", help="Delete rule"):
+                        try:
+                            database.delete_notification_rule(rule['id'])
+                            st.success("Rule deleted!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error: {e}")
+                st.markdown("---")
+    else:
+        st.info("No notification rules configured yet. Add rules above to automatically notify departments.")
 
 
 def _enrollments_tab(enrollments):
@@ -399,23 +514,60 @@ def _enrollments_tab(enrollments):
                 try:
                     pdf_bytes = file_storage.read_file(signature_pdf[0])
                     
-                    col1, col2 = st.columns([3, 1])
+                    enrollment_record = database.get_enrollment_by_id(enrollment_id)
+                    
+                    col1, col2, col3 = st.columns([3, 1, 1])
                     with col1:
                         st.info(f"📄 {os.path.basename(signature_pdf[0])}")
                     with col2:
                         st.download_button(
-                            label="⬇️ Download PDF",
+                            label="⬇️ Download",
                             data=pdf_bytes,
                             file_name=os.path.basename(signature_pdf[0]),
                             mime="application/pdf",
                             key=f"download_pdf_modal_{enrollment_id}",
-                            width='stretch'
+                            use_container_width=True
                         )
+                    with col3:
+                        if st.button("📧 Send to HR", key=f"send_hr_btn_{enrollment_id}", use_container_width=True):
+                            st.session_state[f"show_hr_form_{enrollment_id}"] = True
+                    
+                    if st.session_state.get(f"show_hr_form_{enrollment_id}", False):
+                        with st.form(f"send_hr_form_{enrollment_id}"):
+                            st.markdown("#### Send Signed PDF to HR")
+                            hr_email = st.text_input("HR Email Address", placeholder="hr@shs.com")
+                            custom_subject = st.text_input("Subject (optional)", 
+                                placeholder=f"BYOV Signed Agreement - {enrollment_record.get('full_name', 'Unknown')}")
+                            
+                            col_send, col_cancel = st.columns(2)
+                            with col_send:
+                                if st.form_submit_button("📤 Send Email", type="primary", use_container_width=True):
+                                    if hr_email:
+                                        record_with_pdf = enrollment_record.copy()
+                                        record_with_pdf['signature_pdf_path'] = signature_pdf[0]
+                                        
+                                        if send_pdf_to_hr(record_with_pdf, hr_email, custom_subject if custom_subject else None):
+                                            st.success(f"PDF sent to {hr_email}!")
+                                            st.session_state[f"show_hr_form_{enrollment_id}"] = False
+                                        else:
+                                            st.error("Failed to send email. Check email configuration.")
+                                    else:
+                                        st.warning("Please enter an HR email address.")
+                            with col_cancel:
+                                if st.form_submit_button("Cancel", use_container_width=True):
+                                    st.session_state[f"show_hr_form_{enrollment_id}"] = False
+                                    st.rerun()
+                    
+                    st.markdown("---")
                     
                     import base64
                     base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
-                    pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="800" type="application/pdf"></iframe>'
-                    st.markdown(pdf_display, unsafe_allow_html=True)
+                    st.markdown(
+                        f'<div class="pdf-container"><iframe src="data:application/pdf;base64,{base64_pdf}" '
+                        f'width="100%" height="700" style="border:none;"></iframe></div>',
+                        unsafe_allow_html=True
+                    )
+                    
                 except Exception as e:
                     st.error(f"Error loading PDF: {e}")
             else:
@@ -462,7 +614,6 @@ def page_admin_control_center():
     st.title("BYOV Admin Control Center")
     st.caption("Manage enrollments and view analytics")
     
-    # Add custom CSS for enhanced button styling
     st.markdown("""
     <style>
     /* Tab styling to fit text properly */
@@ -524,17 +675,30 @@ def page_admin_control_center():
         overflow: hidden;
         box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     }
+    
+    /* PDF Viewer styling */
+    .pdf-container {
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        overflow: hidden;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-    # Load data
     enrollments = _get_all_enrollments()
 
-    # Show Enrollments directly
-    _enrollments_tab(enrollments)
-
-    st.markdown("---")
-    st.caption("Select Approve when all information has been successfully validated for enrollment to push to dashboard.")
+    tab1, tab2, tab3 = st.tabs(["📋 Enrollments", "📧 Email Settings", "📊 Overview"])
+    
+    with tab1:
+        _enrollments_tab(enrollments)
+        st.markdown("---")
+        st.caption("Select Approve when all information has been successfully validated for enrollment to push to dashboard.")
+    
+    with tab2:
+        _notification_settings_tab()
+    
+    with tab3:
+        _overview_tab(enrollments)
 
 
 if __name__ == '__main__':

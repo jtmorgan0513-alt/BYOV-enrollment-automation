@@ -149,19 +149,30 @@ def save_uploaded_files(uploaded_files, folder_path: str, prefix: str) -> list:
 
 
 def generate_signed_pdf(template_path: str, signature_image, output_path: str,
-                        sig_x: int = 90, sig_y: int = 450, date_x: int = 310, date_y: int = 450) -> bool:
-    """Generate a PDF with signature and date overlay on page 6 (index 5).
+                        sig_x: int = 90, sig_y: int = 450, date_x: int = 310, date_y: int = 450,
+                        employee_name: str = None, tech_id: str = None,
+                        name_x: int = 90, name_y: int = 480, tech_id_x: int = 310, tech_id_y: int = 480) -> bool:
+    """Generate a PDF with signature, date, name, and tech ID overlay on page 6 (index 5).
     Returns True on success, False on failure.
+    
+    Args:
+        template_path: Path to the PDF template
+        signature_image: PIL Image of the signature
+        output_path: Where to save the signed PDF
+        sig_x, sig_y: Signature position
+        date_x, date_y: Date position
+        employee_name: Employee's full name to include
+        tech_id: Employee's tech ID to include
+        name_x, name_y: Name field position
+        tech_id_x, tech_id_y: Tech ID field position
     """
     try:
         reader = PdfReader(template_path)
         writer = PdfWriter()
 
-        # Create signature/date overlay
         packet = io.BytesIO()
         can = canvas.Canvas(packet, pagesize=letter)
 
-        # Draw signature image if provided
         if signature_image is not None:
             temp_sig_path = "temp_signature.png"
             signature_image.save(temp_sig_path, format='PNG')
@@ -172,17 +183,23 @@ def generate_signed_pdf(template_path: str, signature_image, output_path: str,
             except Exception:
                 pass
 
-        # Draw date
         can.setFont("Helvetica", 10)
         current_date = datetime.now().strftime("%m/%d/%Y")
         can.drawString(date_x, date_y, current_date)
+
+        if employee_name:
+            can.setFont("Helvetica", 10)
+            can.drawString(name_x, name_y, employee_name)
+        
+        if tech_id:
+            can.setFont("Helvetica", 10)
+            can.drawString(tech_id_x, tech_id_y, str(tech_id))
 
         can.save()
         packet.seek(0)
 
         overlay_pdf = PdfReader(packet)
 
-        # Merge overlay onto each page, but ensure page 6 (index 5) receives the overlay
         for i in range(len(reader.pages)):
             page = reader.pages[i]
             if i == 5 and len(overlay_pdf.pages) > 0:
@@ -1854,7 +1871,9 @@ def wizard_step_4():
                     sig_x=sig_x,
                     sig_y=sig_y,
                     date_x=date_x,
-                    date_y=date_y
+                    date_y=date_y,
+                    employee_name=data.get('full_name', ''),
+                    tech_id=data.get('tech_id', '')
                 )
                 
                 if not pdf_success:
@@ -1986,36 +2005,34 @@ def wizard_step_4():
                 # NOTE: Dashboard sync is now handled by admin approval in admin_dashboard.py
                 # No automatic sync on submission - admin must review and approve first
 
-                # Evaluate DB-backed notification rules for "On Submission"
+                # Evaluate DB-backed notification rules for new enrollments
                 try:
                     rules = database.get_notification_rules()
                     sent_logs = database.get_sent_notifications(enrollment_db_id)
                     sent_rule_ids = {s.get('rule_id') for s in sent_logs}
 
                     for rule in rules:
-                        # rule: dict with keys id, rule_name, trigger, days_before, recipients, enabled
                         if not rule.get('enabled'):
                             continue
-                        if rule.get('trigger') != 'On Submission':
+                        
+                        trigger = rule.get('trigger', '')
+                        if trigger not in ['new_enrollment', 'On Submission']:
                             continue
 
                         rid = rule.get('id')
                         if rid in sent_rule_ids:
-                            # already sent for this enrollment, skip
                             continue
 
                         recipients = rule.get('recipients') or []
-                        subject = f"{rule.get('rule_name', 'BYOV Notification')}"
+                        subject = f"{rule.get('rule_name', 'BYOV Notification')}: {data['full_name']} (Tech {data['tech_id']})"
 
                         try:
                             ok = send_email_notification(record, recipients=recipients, subject=subject)
                             if ok:
                                 database.log_notification_sent(enrollment_db_id, rid)
                         except Exception:
-                            # Don't allow rule send failures to interrupt the user flow
-                                pass
+                            pass
                 except Exception:
-                    # Non-fatal: if rules evaluation fails, continue
                     pass
                 
                 # Clear wizard data
@@ -2386,7 +2403,9 @@ def page_new_enrollment_OLD():
                     sig_x=sig_x,
                     sig_y=sig_y,
                     date_x=date_x,
-                    date_y=date_y
+                    date_y=date_y,
+                    employee_name=full_name,
+                    tech_id=tech_id
                 )
                 
                 if not pdf_success:

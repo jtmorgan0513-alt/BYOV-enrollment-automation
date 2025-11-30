@@ -23,7 +23,7 @@ if USE_POSTGRES:
         add_document,
         get_documents_for_enrollment,
         delete_documents_for_enrollment,
-        add_notification_rule,
+        add_notification_rule as _add_notification_rule,
         get_notification_rules,
         update_notification_rule,
         delete_notification_rule,
@@ -33,6 +33,18 @@ if USE_POSTGRES:
         load_enrollments,
         save_enrollments,
     )
+    
+    get_all_notification_rules = get_notification_rules
+    
+    def add_notification_rule(rule_name, trigger, days_before, recipients, enabled=True):
+        """Wrapper to add notification rule with individual parameters."""
+        return _add_notification_rule({
+            "rule_name": rule_name,
+            "trigger": trigger,
+            "days_before": days_before,
+            "recipients": recipients,
+            "enabled": 1 if enabled else 0
+        })
     
     USE_SQLITE = False
     DB_PATH = None
