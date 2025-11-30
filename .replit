@@ -38,5 +38,9 @@ externalPort = 80
 localPort = 35047
 externalPort = 3000
 
+[[ports]]
+localPort = 45381
+externalPort = 3001
+
 # Optional: set a custom title in the Repl UI
 # title = "BYOV Enrollment"
