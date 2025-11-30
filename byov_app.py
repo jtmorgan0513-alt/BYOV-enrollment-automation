@@ -11,6 +11,14 @@ import requests
 import time
 import logging
 
+# Disable SSL certificate verification warnings
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# Disable SSL certificate verification globally
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
+
 from streamlit_drawable_canvas import st_canvas
 from PIL import Image
 from PyPDF2 import PdfReader, PdfWriter
@@ -342,7 +350,7 @@ def decode_vin(vin: str):
 
     try:
         url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvaluesextended/{vin}?format=json"
-        resp = requests.get(url, timeout=10)
+        resp = requests.get(url, timeout=10, verify=False)
         resp.raise_for_status()
         data = resp.json()
 
@@ -615,7 +623,7 @@ def post_to_dashboard(record: dict, enrollment_id: int) -> dict:
                     try:
                         def do_put():
                             with open(photo_path, 'rb') as f:
-                                r = requests.put(gcs_url, data=f, headers={"Content-Type": mime_type}, timeout=60)
+                                r = requests.put(gcs_url, data=f, headers={"Content-Type": mime_type}, timeout=60, verify=False)
                                 return r
                         gcs_resp = retry_request(do_put, attempts=3, backoff_base=0.6)
                     except Exception as e:
@@ -1102,7 +1110,7 @@ def upload_photos_for_technician(enrollment_id: int, dashboard_tech_id: str = No
                 try:
                     def do_put():
                         with open(photo_path, 'rb') as f:
-                            r = requests.put(gcs_url, data=f, headers={"Content-Type": mime_type}, timeout=60)
+                            r = requests.put(gcs_url, data=f, headers={"Content-Type": mime_type}, timeout=60, verify=False)
                             return r
                     gcs_resp = retry_request(do_put, attempts=3, backoff_base=0.6)
                 except Exception as e:
@@ -1307,7 +1315,7 @@ def retry_failed_uploads(enrollment_id: int) -> dict:
             try:
                 def do_put():
                     with open(path, 'rb') as f:
-                        r = requests.put(gcs_url, data=f, headers={"Content-Type": mime_type}, timeout=60)
+                        r = requests.put(gcs_url, data=f, headers={"Content-Type": mime_type}, timeout=60, verify=False)
                         return r
                 gcs_resp = retry_request(do_put, attempts=3, backoff_base=0.6)
             except Exception as e:
