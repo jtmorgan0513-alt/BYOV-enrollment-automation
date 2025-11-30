@@ -345,12 +345,6 @@ def _enrollments_tab(enrollments):
     
     st.subheader("Enrollments")
     
-    # Diagnostics expander (keep for backward compatibility in Admin Control Center)
-    with st.expander("🔧 Diagnostics & Maintenance", expanded=False):
-        st.info("👉 Use the 🔧 icon in the header to access Diagnostics & Maintenance")
-        if st.button("Open Diagnostics Page", key="open_diag_from_expander"):
-            st.session_state.current_page = "Diagnostics"
-            st.rerun()
     
     # -----------------------------
     # No enrollments
