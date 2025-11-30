@@ -2657,13 +2657,13 @@ def render_file_gallery_modal(original_row, selected_row, tech_id):
                             
                             # Thumbnail or icon (optimized for small display)
                             if file_ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp']:
-                                    try:
+                                try:
                                     # Load and create thumbnail to reduce memory usage
                                     img = Image.open(file_path)
                                     # Create thumbnail (max 300px wide to save memory)
                                     img.thumbnail((300, 300), Image.Resampling.LANCZOS)
                                     st.image(img, width='stretch')
-                                except:
+                                except Exception:
                                     st.markdown('<div class="file-thumbnail"></div>', unsafe_allow_html=True)
                             elif file_ext == '.pdf':
                                 st.markdown('<div class="file-pdf-icon">📄</div>', unsafe_allow_html=True)
