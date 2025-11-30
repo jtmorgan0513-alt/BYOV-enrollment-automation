@@ -42,8 +42,9 @@ Preferred communication style: Simple, everyday language.
 - **Signature Embedding:** PyPDF2 for merging signature canvas into final PDF
 
 #### Notification System
-- **Email Delivery:** SMTP-based with configurable credentials via `secrets.toml` or environment variables
+- **Email Delivery:** SendGrid API (primary) with SMTP fallback via `secrets.toml` or environment variables
 - **Templates:** Branded HTML email templates with Sears styling
+- **Logo:** Sears logo embedded as inline CID image (requires `static/sears_logo.png` to be present)
 - **Notification Rules:** Database-driven rule engine for triggered notifications
 
 ### Data Flow Architecture
