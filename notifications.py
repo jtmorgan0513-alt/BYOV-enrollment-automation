@@ -311,33 +311,34 @@ def send_email_notification(record, recipients=None, subject=None, attach_pdf_on
         sg_from = email_config.get("sendgrid_from_email") or os.getenv("SENDGRID_FROM_EMAIL")
         
         if sg_key and recipient_list:
-            sg_payload = {
-                "personalizations": [{"to": [{"email": r} for r in recipient_list]}],
-                "from": {"email": sg_from or sender or "notifications@shs.com"},
-                "subject": subject,
-                "content": [
-                    {"type": "text/plain", "value": plain_body},
-                    {"type": "text/html", "value": html_body}
-                ]
-            }
-            
-            if files:
-                attachments = []
-                for file_path in files:
-                    try:
-                        content = file_storage.read_file(file_path)
-                        if content:
-                            filename = os.path.basename(file_path)
-                            b64_content = base64.b64encode(content).decode() if isinstance(content, bytes) else base64.b64encode(content.encode()).decode()
-                            attachments.append({
-                                "content": b64_content,
-                                "type": "application/octet-stream",
-                                "filename": filename
-                            })
-                    except Exception:
-                        pass
-                if attachments:
-                    sg_payload["attachments"] = attachments
+            try:
+                sg_payload = {
+                    "personalizations": [{"to": [{"email": r} for r in recipient_list]}],
+                    "from": {"email": sg_from or sender or "notifications@shs.com"},
+                    "subject": subject,
+                    "content": [
+                        {"type": "text/plain", "value": plain_body},
+                        {"type": "text/html", "value": html_body}
+                    ]
+                }
+                
+                if files:
+                    attachments = []
+                    for file_path in files:
+                        try:
+                            content = file_storage.read_file(file_path)
+                            if content:
+                                filename = os.path.basename(file_path)
+                                b64_content = base64.b64encode(content).decode() if isinstance(content, bytes) else base64.b64encode(content.encode()).decode()
+                                attachments.append({
+                                    "content": b64_content,
+                                    "type": "application/octet-stream",
+                                    "filename": filename
+                                })
+                        except Exception:
+                            pass
+                    if attachments:
+                        sg_payload["attachments"] = attachments
                 
                 resp = requests.post(
                     "https://api.sendgrid.com/v3/mail/send",
