@@ -156,22 +156,40 @@ def _enrollments_tab(enrollments):
                 if test_sample_photos:
                     upload_base = create_upload_folder(test_tech_id, str(enrollment_id))
                     
-                    # Separate photos by category based on filename or just use vehicle for all
-                    for idx, uploaded_file in enumerate(test_sample_photos):
+                    # Group photos by category
+                    vehicle_photos = []
+                    insurance_photos = []
+                    registration_photos = []
+                    
+                    for uploaded_file in test_sample_photos:
                         fname_lower = uploaded_file.name.lower()
                         if 'insurance' in fname_lower or 'ins' in fname_lower:
-                            category = 'insurance'
-                            subfolder = os.path.join(upload_base, 'insurance')
+                            insurance_photos.append(uploaded_file)
                         elif 'registration' in fname_lower or 'reg' in fname_lower:
-                            category = 'registration'
-                            subfolder = os.path.join(upload_base, 'registration')
+                            registration_photos.append(uploaded_file)
                         else:
-                            category = 'vehicle'
-                            subfolder = os.path.join(upload_base, 'vehicle')
-                        
-                        saved_paths = save_uploaded_files([uploaded_file], subfolder, prefix=category)
+                            vehicle_photos.append(uploaded_file)
+                    
+                    # Save each category batch
+                    if vehicle_photos:
+                        subfolder = os.path.join(upload_base, 'vehicle')
+                        saved_paths = save_uploaded_files(vehicle_photos, subfolder, prefix='vehicle')
                         for p in saved_paths:
-                            database.add_document(enrollment_id, category, p)
+                            database.add_document(enrollment_id, 'vehicle', p)
+                            photo_count += 1
+                    
+                    if insurance_photos:
+                        subfolder = os.path.join(upload_base, 'insurance')
+                        saved_paths = save_uploaded_files(insurance_photos, subfolder, prefix='insurance')
+                        for p in saved_paths:
+                            database.add_document(enrollment_id, 'insurance', p)
+                            photo_count += 1
+                    
+                    if registration_photos:
+                        subfolder = os.path.join(upload_base, 'registration')
+                        saved_paths = save_uploaded_files(registration_photos, subfolder, prefix='registration')
+                        for p in saved_paths:
+                            database.add_document(enrollment_id, 'registration', p)
                             photo_count += 1
                 
                 st.success(f"✅ Test enrollment #{enrollment_id} created successfully with {photo_count} photos!")
