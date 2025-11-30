@@ -4,7 +4,7 @@ modules = ["nodejs-20", "web", "python-3.11", "postgresql-16"]
 
 [nix]
 channel = "stable-25_05"
-packages = ["freetype", "glibcLocales", "lcms2", "libimagequant", "libjpeg", "libtiff", "libwebp", "libxcrypt", "openjpeg", "tcl", "tk", "zlib"]
+packages = ["freetype", "glibcLocales", "gumbo", "harfbuzz", "jbig2dec", "lcms2", "libimagequant", "libjpeg", "libjpeg_turbo", "libtiff", "libwebp", "libxcrypt", "mupdf", "openjpeg", "poppler", "poppler_utils", "swig", "tcl", "tk", "xcbuild", "zlib"]
 
 [workflows]
 runButton = "Project"
@@ -33,10 +33,6 @@ outputType = "webview"
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 41367
-externalPort = 3000
 
 [userenv]
 

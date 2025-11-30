@@ -32,14 +32,11 @@ def get_sears_html_template(record, include_logo=True):
     
     logo_section = ""
     if include_logo:
-        logo_section = """
-        <div style="text-align: center; padding: 20px 0; background: linear-gradient(135deg, #0d6efd 0%, #0056b3 100%);">
-            <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 700; letter-spacing: 1px;">
-                SEARS HOME SERVICES
-            </h1>
-            <p style="color: rgba(255,255,255,0.9); margin: 5px 0 0 0; font-size: 14px;">
-                BYOV Enrollment System
-            </p>
+        logo_base64 = "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"
+        logo_section = f"""
+        <div style="text-align: center; padding: 25px 20px; background-color: #ffffff; border-bottom: 1px solid #e0e0e0;">
+            <!-- Sears Home Services Logo -->
+            <img src="data:image/png;base64,{logo_base64}" alt="Sears Home Services" style="max-width: 200px; height: auto;" />
         </div>
         """
     

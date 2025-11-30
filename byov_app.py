@@ -151,7 +151,7 @@ def save_uploaded_files(uploaded_files, folder_path: str, prefix: str) -> list:
 def generate_signed_pdf(template_path: str, signature_image, output_path: str,
                         sig_x: int = 90, sig_y: int = 450, date_x: int = 310, date_y: int = 450,
                         employee_name: str = None, tech_id: str = None,
-                        name_x: int = 90, name_y: int = 480, tech_id_x: int = 310, tech_id_y: int = 480) -> bool:
+                        name_x: int = 345, name_y: int = 555, tech_id_x: int = 345, tech_id_y: int = 538) -> bool:
     """Generate a PDF with signature, date, name, and tech ID overlay on page 6 (index 5).
     Returns True on success, False on failure.
     

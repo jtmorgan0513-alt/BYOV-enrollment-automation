@@ -19,3 +19,5 @@ streamlit-drawable-canvas
 google-cloud-storage
 psycopg2-binary
 urllib3
+pdf2image
+pymupdf
