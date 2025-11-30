@@ -66,13 +66,15 @@ def _overview_tab(enrollments):
     st.info("Use the Enrollments tab to view and manage all enrollments.")
 
 
-def _enrollments_tab(enrollments):
+def show_diagnostics_section():
+    """Standalone diagnostics and maintenance section"""
     import pandas as pd
-
-    st.subheader("Enrollments")
-
-    # Diagnostics: Dashboard connectivity test
-    with st.expander("🔧 Diagnostics & Maintenance", expanded=False):
+    
+    st.title("🔧 Diagnostics & Maintenance")
+    st.markdown("---")
+    
+    # All diagnostics content
+    with st.container():
         st.caption("**Database Migration:**")
         if st.button("⚙️ Run Database Migration (Add Approval Columns)", key="run_migration", type="primary"):
             try:
@@ -336,6 +338,20 @@ def _enrollments_tab(enrollments):
                     except Exception as e:
                         st.error(f"Unexpected error during attach/transmit: {e}")
 
+
+def _enrollments_tab(enrollments):
+    """Enrollments management tab"""
+    import pandas as pd
+    
+    st.subheader("Enrollments")
+    
+    # Diagnostics expander (keep for backward compatibility in Admin Control Center)
+    with st.expander("🔧 Diagnostics & Maintenance", expanded=False):
+        st.info("👉 Use the 🔧 icon in the header to access Diagnostics & Maintenance")
+        if st.button("Open Diagnostics Page", key="open_diag_from_expander"):
+            st.session_state.current_page = "Diagnostics"
+            st.rerun()
+    
     # -----------------------------
     # No enrollments
     # -----------------------------

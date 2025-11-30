@@ -2919,6 +2919,14 @@ def main():
             background-color: var(--secondary-background-color);
         }
         
+        /* Header icon buttons */
+        .header-icon-button {
+            font-size: 1.5rem !important;
+            padding: 0.25rem 0.5rem !important;
+            min-height: auto !important;
+            height: auto !important;
+        }
+        
         /* Mobile responsive adjustments */
         @media (max-width: 768px) {
             .main {
@@ -2928,6 +2936,9 @@ def main():
             .stButton>button, .stDownloadButton>button {
                 font-size: 14px;
                 padding: 0.5rem;
+            }
+            .header-icon-button {
+                font-size: 1.25rem !important;
             }
             h1 {
                 font-size: 1.5rem !important;
@@ -3025,32 +3036,48 @@ def main():
     if admin_mode:
         st.sidebar.info("🔧 Admin mode enabled")
     
-    # Main content area with prominent Admin button
+    # Main content area with header icon navigation
     if st.session_state.current_page == "New Enrollment":
-        # Create columns for Admin button in top-right
-        col1, col2 = st.columns([8, 2])
+        # Create header with icon buttons
+        col1, col2, col3 = st.columns([8, 1, 1])
         with col2:
-            if st.button("👤 Admin", key="admin_button", use_container_width=True):
+            if st.button("🔧", key="diagnostics_button", help="Diagnostics & Maintenance"):
+                st.session_state.current_page = "Diagnostics"
+                st.rerun()
+        with col3:
+            if st.button("👤", key="admin_button", help="Admin Control Center"):
                 st.session_state.current_page = "Admin Control Center"
                 st.rerun()
         
         page_new_enrollment()
     
-    elif st.session_state.current_page == "Admin Control Center":
-        # Back button when on Admin page
-        col1, col2 = st.columns([8, 2])
+    elif st.session_state.current_page == "Diagnostics":
+        # Header with back button
+        col1, col2 = st.columns([9, 1])
         with col2:
-            if st.button("⬅ Back", key="back_button", use_container_width=True):
+            if st.button("⬅", key="back_from_diagnostics", help="Back to Enrollment"):
+                st.session_state.current_page = "New Enrollment"
+                st.rerun()
+        
+        # Show diagnostics section
+        from admin_dashboard import show_diagnostics_section
+        show_diagnostics_section()
+    
+    elif st.session_state.current_page == "Admin Control Center":
+        # Header with back button
+        col1, col2 = st.columns([9, 1])
+        with col2:
+            if st.button("⬅", key="back_button", help="Back to Enrollment"):
                 st.session_state.current_page = "New Enrollment"
                 st.rerun()
         
         page_admin_control_center()
     
     elif st.session_state.current_page == "Admin Settings":
-        # Back button when on Admin Settings page
-        col1, col2 = st.columns([8, 2])
+        # Header with back button
+        col1, col2 = st.columns([9, 1])
         with col2:
-            if st.button("⬅ Back", key="back_button_settings", use_container_width=True):
+            if st.button("⬅", key="back_button_settings", help="Back to Enrollment"):
                 st.session_state.current_page = "New Enrollment"
                 st.rerun()
         
