@@ -561,12 +561,106 @@ def _enrollments_tab(enrollments):
                     st.markdown("---")
                     
                     import base64
+                    import io as io_module
                     base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
-                    st.markdown(
-                        f'<div class="pdf-container"><iframe src="data:application/pdf;base64,{base64_pdf}" '
-                        f'width="100%" height="700" style="border:none;"></iframe></div>',
-                        unsafe_allow_html=True
-                    )
+                    
+                    st.markdown("#### PDF Page Navigation")
+                    
+                    @st.cache_data
+                    def get_pdf_page_count(pdf_data):
+                        from PyPDF2 import PdfReader
+                        pdf_reader = PdfReader(io_module.BytesIO(pdf_data))
+                        return len(pdf_reader.pages)
+                    
+                    @st.cache_data
+                    def render_pdf_page(pdf_data, page_num, dpi=150):
+                        try:
+                            from pdf2image import convert_from_bytes
+                            images = convert_from_bytes(pdf_data, first_page=page_num, last_page=page_num, dpi=dpi)
+                            if images:
+                                img_buffer = io_module.BytesIO()
+                                images[0].save(img_buffer, format='PNG')
+                                return img_buffer.getvalue()
+                        except Exception:
+                            pass
+                        return None
+                    
+                    try:
+                        total_pages = get_pdf_page_count(pdf_bytes)
+                    except Exception as page_err:
+                        st.error(f"Could not determine page count: {page_err}")
+                        st.info("Showing full PDF in embedded viewer. Scroll to navigate pages.")
+                        pdf_viewer_html = f'''
+                        <div style="width: 100%; height: 700px; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;">
+                            <iframe src="data:application/pdf;base64,{base64_pdf}" 
+                                    width="100%" height="100%" style="border: none;">
+                            </iframe>
+                        </div>
+                        '''
+                        st.markdown(pdf_viewer_html, unsafe_allow_html=True)
+                        total_pages = None
+                    
+                    if total_pages:
+                        if f"pdf_page_{enrollment_id}" not in st.session_state:
+                            st.session_state[f"pdf_page_{enrollment_id}"] = 1
+                        
+                        current_page = st.session_state[f"pdf_page_{enrollment_id}"]
+                        
+                        if current_page > total_pages:
+                            current_page = 1
+                            st.session_state[f"pdf_page_{enrollment_id}"] = 1
+                        
+                        nav_col1, nav_col2, nav_col3, nav_col4, nav_col5 = st.columns([1, 1, 2, 1, 1])
+                        
+                        with nav_col1:
+                            if st.button("⏮ First", key=f"first_page_{enrollment_id}", use_container_width=True):
+                                st.session_state[f"pdf_page_{enrollment_id}"] = 1
+                        
+                        with nav_col2:
+                            if st.button("◀ Prev", key=f"prev_page_{enrollment_id}", use_container_width=True):
+                                if current_page > 1:
+                                    st.session_state[f"pdf_page_{enrollment_id}"] = current_page - 1
+                        
+                        with nav_col3:
+                            st.markdown(f"<div style='text-align: center; padding: 8px; background: #0d6efd; color: white; border-radius: 4px; font-weight: bold;'>Page {current_page} of {total_pages}</div>", unsafe_allow_html=True)
+                        
+                        with nav_col4:
+                            if st.button("Next ▶", key=f"next_page_{enrollment_id}", use_container_width=True):
+                                if current_page < total_pages:
+                                    st.session_state[f"pdf_page_{enrollment_id}"] = current_page + 1
+                        
+                        with nav_col5:
+                            if st.button("Last ⏭", key=f"last_page_{enrollment_id}", use_container_width=True):
+                                st.session_state[f"pdf_page_{enrollment_id}"] = total_pages
+                        
+                        st.caption(f"📝 Signature is on page {total_pages}")
+                        
+                        page_buttons = st.columns(min(total_pages, 10))
+                        for i, col in enumerate(page_buttons[:total_pages]):
+                            page_num = i + 1
+                            with col:
+                                btn_type = "primary" if page_num == current_page else "secondary"
+                                if st.button(str(page_num), key=f"page_btn_{enrollment_id}_{page_num}", type=btn_type, use_container_width=True):
+                                    st.session_state[f"pdf_page_{enrollment_id}"] = page_num
+                        
+                        current_page = st.session_state[f"pdf_page_{enrollment_id}"]
+                        
+                        page_image = render_pdf_page(pdf_bytes, current_page)
+                        
+                        if page_image:
+                            st.image(page_image, use_container_width=True)
+                            if current_page == total_pages:
+                                st.success("📝 This is the signed page with the technician's signature.")
+                        else:
+                            st.warning("Unable to render PDF page as image. Please use the Download button to view the full PDF.")
+                            pdf_viewer_html = f'''
+                            <div style="width: 100%; height: 700px; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;">
+                                <iframe src="data:application/pdf;base64,{base64_pdf}#page={current_page}" 
+                                        width="100%" height="100%" style="border: none;">
+                                </iframe>
+                            </div>
+                            '''
+                            st.markdown(pdf_viewer_html, unsafe_allow_html=True)
                     
                 except Exception as e:
                     st.error(f"Error loading PDF: {e}")

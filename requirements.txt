@@ -7,15 +7,6 @@ streamlit-drawable-canvas
 PyPDF2
 streamlit-aggrid
 numpy
-numpy
-pandas
-Pillow
-PyPDF2
-reportlab
-requests
-streamlit
-streamlit-aggrid
-streamlit-drawable-canvas
 google-cloud-storage
 psycopg2-binary
 urllib3
