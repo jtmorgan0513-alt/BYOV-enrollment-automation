@@ -39,5 +39,8 @@ externalPort = 80
 [userenv.shared]
 SENDGRID_FROM_EMAIL = "notifications@shs.com"
 
+[agent]
+expertMode = true
+
 # Optional: set a custom title in the Repl UI
 # title = "BYOV Enrollment"
