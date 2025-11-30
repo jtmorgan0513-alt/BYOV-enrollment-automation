@@ -824,6 +824,12 @@ def post_to_dashboard_single_request(record: dict, enrollment_id: int = None, en
                 continue
             with open(path, 'rb') as fh:
                 b = fh.read()
+            
+            # Debug logging
+            import hashlib
+            file_hash = hashlib.md5(b).hexdigest()[:8]
+            print(f"[DEBUG] Encoding photo: {os.path.basename(path)} | Category: {category} | Size: {size} | Hash: {file_hash}")
+            
             raw_b64 = _b64.b64encode(b).decode('ascii')
             mime = _mimetypes.guess_type(path)[0] or 'application/octet-stream'
             # Prefer data URL when we have a known mime (matches example)
