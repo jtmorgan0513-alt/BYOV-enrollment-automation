@@ -6,6 +6,14 @@ from notifications import send_email_notification
 import shutil
 from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 
+# Disable SSL certificate verification warnings
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# Disable SSL certificate verification globally
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
+
 try:
     import sqlite3
 except Exception:
