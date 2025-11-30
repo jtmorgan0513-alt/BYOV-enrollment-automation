@@ -34,5 +34,9 @@ outputType = "webview"
 localPort = 5000
 externalPort = 80
 
+[[ports]]
+localPort = 35047
+externalPort = 3000
+
 # Optional: set a custom title in the Repl UI
 # title = "BYOV Enrollment"
