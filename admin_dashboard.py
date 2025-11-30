@@ -524,15 +524,11 @@ def page_admin_control_center():
     </style>
     """, unsafe_allow_html=True)
 
-    # Load data once for all tabs
+    # Load data
     enrollments = _get_all_enrollments()
 
-    tabs = st.tabs(["Overview", "Enrollments"])
-
-    with tabs[0]:
-        _overview_tab(enrollments)
-    with tabs[1]:
-        _enrollments_tab(enrollments)
+    # Show Enrollments directly
+    _enrollments_tab(enrollments)
 
     st.markdown("---")
     st.caption("Select Approve when all information has been successfully validated for enrollment to push to dashboard.")
