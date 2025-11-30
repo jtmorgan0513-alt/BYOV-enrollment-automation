@@ -469,6 +469,13 @@ def page_admin_control_center():
     # Add custom CSS for enhanced button styling
     st.markdown("""
     <style>
+    /* Tab styling to fit text properly */
+    button[data-baseweb="tab"] {
+        padding: 8px 16px !important;
+        font-size: 13px !important;
+        white-space: normal !important;
+    }
+    
     /* Enhanced button styling */
     div[data-testid="stButton"] button {
         font-size: 12px;
@@ -478,7 +485,7 @@ def page_admin_control_center():
         border: none;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         transition: all 0.3s ease;
-        white-space: nowrap;
+        white-space: normal;
         overflow: visible;
         text-overflow: clip;
     }
