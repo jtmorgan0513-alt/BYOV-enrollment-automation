@@ -3042,9 +3042,13 @@ def main():
         page_new_enrollment()
     
     elif st.session_state.current_page == "Admin Control Center":
-        # Header with back button
-        col1, col2 = st.columns([9, 1])
-        with col2:
+        # Header with logo and back button
+        logo_path = "Sears Image.png"
+        header_col1, header_col2 = st.columns([9, 1])
+        with header_col1:
+            if os.path.exists(logo_path):
+                st.image(logo_path, width=200)
+        with header_col2:
             st.button("⬅", key="back_button", help="Back to Enrollment", on_click=go_to_enrollment)
         
         page_admin_control_center()
