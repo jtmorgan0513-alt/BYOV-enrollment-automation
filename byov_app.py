@@ -2901,7 +2901,7 @@ def main():
     st.set_page_config(
         page_title="BYOV Program",
         layout="centered",
-        initial_sidebar_state="expanded",
+        initial_sidebar_state="collapsed",
     )
     
     # Theme-aware styling with mobile optimization
@@ -2923,6 +2923,7 @@ def main():
         @media (max-width: 768px) {
             .main {
                 padding: 0.5rem;
+                padding-top: 3.5rem;
             }
             .stButton>button, .stDownloadButton>button {
                 font-size: 14px;
@@ -2989,7 +2990,14 @@ def main():
     if not templates_ok:
         st.stop()
 
-    # Sidebar navigation with Sears branding
+    # Initialize session state for navigation
+    if 'current_page' not in st.session_state:
+        st.session_state.current_page = "New Enrollment"
+    
+    # Check for admin mode
+    admin_mode = st.query_params.get("admin") == "true"
+    
+    # Sidebar navigation with Sears branding (still available but collapsed)
     logo_path = "Sears Image.png"
     if os.path.exists(logo_path):
         st.sidebar.image(logo_path, width=200)
@@ -3000,26 +3008,52 @@ def main():
     
     st.sidebar.title("Select a page")
     
-    # Check for admin mode
-    admin_mode = st.query_params.get("admin") == "true"
-    
     page_options = ["New Enrollment", "Admin Control Center"]
     if admin_mode:
         page_options.append("Admin Settings")
     
-    page = st.sidebar.radio(
+    sidebar_page = st.sidebar.radio(
         "Select a page",
         page_options,
+        index=page_options.index(st.session_state.current_page) if st.session_state.current_page in page_options else 0,
     )
+    
+    # Update session state if sidebar selection changed
+    if sidebar_page != st.session_state.current_page:
+        st.session_state.current_page = sidebar_page
     
     if admin_mode:
         st.sidebar.info("🔧 Admin mode enabled")
-
-    if page == "New Enrollment":
+    
+    # Main content area with prominent Admin button
+    if st.session_state.current_page == "New Enrollment":
+        # Create columns for Admin button in top-right
+        col1, col2 = st.columns([8, 2])
+        with col2:
+            if st.button("👤 Admin", key="admin_button", use_container_width=True):
+                st.session_state.current_page = "Admin Control Center"
+                st.rerun()
+        
         page_new_enrollment()
-    elif page == "Admin Control Center":
+    
+    elif st.session_state.current_page == "Admin Control Center":
+        # Back button when on Admin page
+        col1, col2 = st.columns([8, 2])
+        with col2:
+            if st.button("⬅ Back", key="back_button", use_container_width=True):
+                st.session_state.current_page = "New Enrollment"
+                st.rerun()
+        
         page_admin_control_center()
-    elif page == "Admin Settings":
+    
+    elif st.session_state.current_page == "Admin Settings":
+        # Back button when on Admin Settings page
+        col1, col2 = st.columns([8, 2])
+        with col2:
+            if st.button("⬅ Back", key="back_button_settings", use_container_width=True):
+                st.session_state.current_page = "New Enrollment"
+                st.rerun()
+        
         page_admin_settings()
 
 
