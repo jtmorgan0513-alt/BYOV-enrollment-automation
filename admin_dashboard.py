@@ -99,7 +99,92 @@ def _enrollments_tab(enrollments):
                 st.error(f"❌ Migration failed: {e}")
         
         st.markdown("---")
-        st.caption("**Verify Replit dashboard login and API availability:**")
+        st.caption("**Create Complete Test Enrollment with Sample Data**")
+        st.info("📋 This creates a full test enrollment in the database with all fields populated and sample photos. Use the Approve button in the Enrollments tab to test the complete workflow.")
+        
+        with st.form("test_enrollment_form"):
+            col1, col2 = st.columns(2)
+            with col1:
+                test_tech_id = st.text_input("Tech ID*", value=f"TEST-{datetime.now().strftime('%Y%m%d%H%M%S')}")
+                test_name = st.text_input("Full Name*", value="John Test Technician")
+                test_district = st.text_input("District*", value="4766")
+                test_state = st.selectbox("State*", ["IL", "CA", "TX", "FL", "NY"], index=0)
+                test_referred_by = st.text_input("Referred By", value="Test Manager")
+                test_phone = st.text_input("Mobile Phone", value="555-123-4567")
+                test_email = st.text_input("Email", value="test@example.com")
+            
+            with col2:
+                test_vin = st.text_input("VIN*", value="1HGBH41JXMN109186")
+                test_make = st.text_input("Vehicle Make*", value="Honda")
+                test_model = st.text_input("Vehicle Model*", value="Accord")
+                test_year = st.text_input("Vehicle Year*", value="2024")
+                test_industry = st.multiselect("Industry", ["Cook", "Dish", "Laundry", "Micro", "Ref", "HVAC", "L&G"], default=["Cook", "Ref"])
+                test_insurance_exp = st.date_input("Insurance Expiration", value=datetime(2025, 12, 31))
+                test_reg_exp = st.date_input("Registration Expiration", value=datetime(2025, 12, 31))
+            
+            test_sample_photos = st.file_uploader("Upload Sample Photos (vehicle, insurance, registration)", accept_multiple_files=True, type=["jpg","jpeg","png","pdf"], key="test_enrollment_photos")
+            
+            submit_test = st.form_submit_button("✅ Create Test Enrollment", type="primary")
+        
+        if submit_test:
+            try:
+                from byov_app import create_upload_folder, save_uploaded_files
+                
+                # Create test enrollment record with all fields
+                test_record = {
+                    'tech_id': test_tech_id,
+                    'full_name': test_name,
+                    'district': test_district,
+                    'state': test_state,
+                    'referred_by': test_referred_by,
+                    'vin': test_vin,
+                    'make': test_make,
+                    'model': test_model,
+                    'year': test_year,
+                    'industry': test_industry,
+                    'insurance_exp': test_insurance_exp.isoformat() if test_insurance_exp else None,
+                    'registration_exp': test_reg_exp.isoformat() if test_reg_exp else None,
+                    'submission_date': datetime.now().isoformat(),
+                    'approved': 0
+                }
+                
+                # Insert enrollment into database
+                enrollment_id = database.insert_enrollment(test_record)
+                
+                # Save uploaded photos if provided
+                photo_count = 0
+                if test_sample_photos:
+                    upload_base = create_upload_folder(test_tech_id, str(enrollment_id))
+                    
+                    # Separate photos by category based on filename or just use vehicle for all
+                    for idx, uploaded_file in enumerate(test_sample_photos):
+                        fname_lower = uploaded_file.name.lower()
+                        if 'insurance' in fname_lower or 'ins' in fname_lower:
+                            category = 'insurance'
+                            subfolder = os.path.join(upload_base, 'insurance')
+                        elif 'registration' in fname_lower or 'reg' in fname_lower:
+                            category = 'registration'
+                            subfolder = os.path.join(upload_base, 'registration')
+                        else:
+                            category = 'vehicle'
+                            subfolder = os.path.join(upload_base, 'vehicle')
+                        
+                        saved_paths = save_uploaded_files([uploaded_file], subfolder, prefix=category)
+                        for p in saved_paths:
+                            database.add_document(enrollment_id, category, p)
+                            photo_count += 1
+                
+                st.success(f"✅ Test enrollment #{enrollment_id} created successfully with {photo_count} photos!")
+                st.info(f"🎯 **Tech ID:** `{test_tech_id}` — Go to the **Enrollments** tab and click **✅ Approve** to test the full workflow.")
+                
+            except Exception as e:
+                st.error(f"❌ Error creating test enrollment: {e}")
+                import traceback
+                st.code(traceback.format_exc())
+
+        st.markdown("---")
+        st.caption("**Legacy Test Functions** (kept for backward compatibility)")
+        st.caption("Verify Replit dashboard login and API availability:")
         if st.button("🔌 Test Dashboard Login", key="test_dashboard_login", type="secondary"):
             try:
                 from byov_app import post_to_dashboard
