@@ -401,7 +401,7 @@ def _enrollments_tab(enrollments):
                 </div>
                 """, unsafe_allow_html=True)
                 
-                cols = st.columns([2.2, 3.2, 3.7, 2.7, 2.7, 2.2])
+                cols = st.columns([2.2, 3.2, 2.7, 2.2])
                 
                 # Select button
                 with cols[0]:
@@ -421,28 +421,8 @@ def _enrollments_tab(enrollments):
                         st.session_state.open_photos_for_id = enrollment_id
                         st.rerun()
                 
-                # View PDF button
-                with cols[2]:
-                    # Get signed PDF from documents
-                    docs = database.get_documents_for_enrollment(enrollment_id)
-                    pdf_docs = [d for d in docs if d['doc_type'] == 'signature']
-                    if pdf_docs and os.path.exists(pdf_docs[0]['file_path']):
-                        with open(pdf_docs[0]['file_path'], 'rb') as f:
-                            pdf_bytes = f.read()
-                        st.download_button(
-                            label="⬇️ Download PDF",
-                            data=pdf_bytes,
-                            file_name=f"BYOV_{row.get('tech_id', 'enrollment')}_{enrollment_id}.pdf",
-                            mime="application/pdf",
-                            key=f"download_pdf_{enrollment_id}",
-                            width='stretch',
-                            type="secondary"
-                        )
-                    else:
-                        st.button("📄 No PDF", key=f"no_pdf_{enrollment_id}", disabled=True, width='stretch')
-                
                 # Approve button - Sends to dashboard
-                with cols[3]:
+                with cols[2]:
                     # Check if already approved
                     is_approved = row.get('approved', 0) == 1
                     
@@ -493,45 +473,9 @@ def _enrollments_tab(enrollments):
                                 else:
                                     # Non-successful HTTP response
                                     st.error(f"❌ Dashboard responded with status {status_code}: {resp}")
-
-                    # Show Transmit and Retry buttons even after approval so admins can upload or retry photos
-                    # Transmit Photos button
-                    if st.button("📤 Transmit Photos", key=f"transmit_{enrollment_id}", type="secondary", width='stretch'):
-                        from byov_app import upload_photos_for_technician
-                        # Attempt to use stored dashboard_tech_id if present
-                        dashboard_id = row.get('dashboard_tech_id')
-                        transmit_result = upload_photos_for_technician(enrollment_id, dashboard_tech_id=dashboard_id)
-                        if transmit_result.get('error'):
-                            st.error(f"❌ Photo transmit error: {transmit_result.get('error')}")
-                        else:
-                            count = transmit_result.get('photo_count', 0)
-                            st.success(f"✅ Transmitted {count} photos for enrollment #{enrollment_id}.")
-                            failed = transmit_result.get('failed_uploads')
-                            if failed:
-                                st.warning(f"⚠️ Some photo uploads failed: {len(failed)}. Use Retry Failed Uploads.")
-                                with st.expander("Failed Upload Details"):
-                                    for f in failed:
-                                        st.write(f)
-                            st.rerun()
-
-                    # Retry Failed Uploads button
-                    if st.button("🔁 Retry Failed Uploads", key=f"retry_{enrollment_id}", type="secondary", width='stretch'):
-                        from byov_app import retry_failed_uploads
-                        retry_result = retry_failed_uploads(enrollment_id)
-                        if retry_result.get('error'):
-                            st.error(f"❌ Retry error: {retry_result.get('error')}")
-                        else:
-                            rc = retry_result.get('retried_count', 0)
-                            rem = retry_result.get('remaining_failed', 0)
-                            st.success(f"🔁 Retried {rc} uploads; {rem} remain failed.")
-                            if retry_result.get('still_failed'):
-                                with st.expander("Remaining Failed Uploads"):
-                                    for f in retry_result.get('still_failed'):
-                                        st.write(f)
-                            st.rerun()
                 
                 # Delete button
-                with cols[4]:
+                with cols[3]:
                     is_confirming = st.session_state.delete_confirm.get(enrollment_id, False)
                     btn_label = "⚠️ Confirm Delete" if is_confirming else "🗑️ Delete"
                     
