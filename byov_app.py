@@ -741,7 +741,7 @@ def post_to_dashboard_single_request(record: dict, enrollment_id: int = None, en
 
     session = requests.Session()
     try:
-        login_resp = session.post(f"{dashboard_url}/api/login", json={"username": username, "password": password}, timeout=10)
+        login_resp = session.post(f"{dashboard_url}/api/login", json={"username": username, "password": password}, timeout=10, verify=False)
         if not login_resp.ok:
             return {"error": f"Login failed {login_resp.status_code}", "body": login_resp.text[:200]}
     except Exception as e:
@@ -905,7 +905,7 @@ def create_technician_on_dashboard(record: dict) -> dict:
 
     session = requests.Session()
     try:
-        login_resp = session.post(f"{dashboard_url}/api/login", json={"username": username, "password": password}, timeout=10)
+        login_resp = session.post(f"{dashboard_url}/api/login", json={"username": username, "password": password}, timeout=10, verify=False)
         if not login_resp.ok:
             return {"error": f"Login failed {login_resp.status_code}", "body": login_resp.text[:200]}
     except Exception as e:
@@ -988,7 +988,7 @@ def upload_photos_for_technician(enrollment_id: int, dashboard_tech_id: str = No
 
     session = requests.Session()
     try:
-        login_resp = session.post(f"{dashboard_url}/api/login", json={"username": username, "password": password}, timeout=10)
+        login_resp = session.post(f"{dashboard_url}/api/login", json={"username": username, "password": password}, timeout=10, verify=False)
         if not login_resp.ok:
             return {"error": f"Login failed {login_resp.status_code}", "body": login_resp.text[:200]}
     except Exception as e:
@@ -1136,7 +1136,7 @@ def upload_photos_for_technician(enrollment_id: int, dashboard_tech_id: str = No
                     try:
                         photo_payload = {'uploadURL': e['uploadURL'], 'category': e['category'], 'mimeType': e['mimeType']}
                         try:
-                            photo_resp = retry_request(lambda: session.post(f"{dashboard_url}/api/technicians/{dashboard_tech_id}/photos", json=photo_payload, timeout=10), attempts=3, backoff_base=0.6)
+                            photo_resp = retry_request(lambda: session.post(f"{dashboard_url}/api/technicians/{dashboard_tech_id}/photos", json=photo_payload, timeout=10, verify=False), attempts=3, backoff_base=0.6)
                             photo_count += 1
                             dashboard_log(f"Registered photo {e.get('path')} for tech {dashboard_tech_id}")
                         except Exception as reg_exc:
@@ -1150,7 +1150,7 @@ def upload_photos_for_technician(enrollment_id: int, dashboard_tech_id: str = No
                 try:
                     photo_payload = {'uploadURL': e['uploadURL'], 'category': e['category'], 'mimeType': e['mimeType']}
                     try:
-                        photo_resp = retry_request(lambda: session.post(f"{dashboard_url}/api/technicians/{dashboard_tech_id}/photos", json=photo_payload, timeout=10), attempts=3, backoff_base=0.6)
+                        photo_resp = retry_request(lambda: session.post(f"{dashboard_url}/api/technicians/{dashboard_tech_id}/photos", json=photo_payload, timeout=10, verify=False), attempts=3, backoff_base=0.6)
                         photo_count += 1
                         dashboard_log(f"Registered photo {e.get('path')} for tech {dashboard_tech_id} after batch error")
                     except Exception as reg_exc:
@@ -1191,7 +1191,7 @@ def retry_failed_uploads(enrollment_id: int) -> dict:
 
     session = requests.Session()
     try:
-        login_resp = session.post(f"{dashboard_url}/api/login", json={"username": username, "password": password}, timeout=10)
+        login_resp = session.post(f"{dashboard_url}/api/login", json={"username": username, "password": password}, timeout=10, verify=False)
         if not login_resp.ok:
             return {"error": f"Login failed {login_resp.status_code}", "body": login_resp.text[:200]}
     except Exception as e:
@@ -1287,7 +1287,7 @@ def retry_failed_uploads(enrollment_id: int) -> dict:
         category = path_to_category.get(path, 'vehicle')
         try:
             try:
-                upload_req = retry_request(lambda: session.post(f"{dashboard_url}/api/objects/upload", json={"category": category}, timeout=10), attempts=3, backoff_base=0.6)
+                upload_req = retry_request(lambda: session.post(f"{dashboard_url}/api/objects/upload", json={"category": category}, timeout=10, verify=False), attempts=3, backoff_base=0.6)
             except Exception as e:
                 dashboard_log(f"Failed to get upload URL for {path}: {e}")
                 still_failed.append({'path': path, 'reason': str(e)})
@@ -1319,7 +1319,7 @@ def retry_failed_uploads(enrollment_id: int) -> dict:
             try:
                 photo_payload = {'uploadURL': gcs_url, 'category': category, 'mimeType': mime_type}
                 try:
-                    reg_resp = retry_request(lambda: session.post(f"{dashboard_url}/api/technicians/{dashboard_id}/photos", json=photo_payload, timeout=10), attempts=3, backoff_base=0.6)
+                    reg_resp = retry_request(lambda: session.post(f"{dashboard_url}/api/technicians/{dashboard_id}/photos", json=photo_payload, timeout=10, verify=False), attempts=3, backoff_base=0.6)
                     retried += 1
                     dashboard_log(f"Retried and registered photo {path} for tech {dashboard_id}")
                 except Exception as reg_exc:
