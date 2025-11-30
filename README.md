@@ -1,6 +1,6 @@
 # BYOV-enrollment-automation
 
-Automated BYOV enrollment engine with VIN decoding, data collection, PDF generation, and an admin control center.
+Automated BYOV enrollment engine with VIN decoding, data collection, PDF generation, and an admin control center. **Successfully collects enrollment data and transmits to Replit dashboard with each new enrollment via an approve button in the admin dashboard.**
 
 ## Features
 - Streamlit UI wizard for technician enrollment (Tech Info, Vehicle & Docs, Policy & Signature, Review & Submit)
@@ -9,13 +9,16 @@ Automated BYOV enrollment engine with VIN decoding, data collection, PDF generat
 - Photo/document uploads (vehicle, insurance, registration)
 - PDF generation with embedded signature
 - Email notification with submission details, PDF, and attachments (configurable via SMTP)
-- **Admin Control Center**: Tabbed dashboard for managing enrollments, notification rules, and logs
+- **Admin Control Center**: Comprehensive dashboard for managing enrollments and transmitting to external systems
+    - **One-Click Approval**: Approve button creates technician records on Replit dashboard with photos in a single API call
     - Overview metrics (enrollments, rules, emails sent, storage mode)
-    - Enrollments tab: search, pagination, record selection
-    - Rules tab: create/edit/delete/toggle/run notification rules
-    - Notifications Log tab: view sent notifications
+    - Enrollments tab: search, pagination, photo viewer, PDF download
+    - View Photos modal: organized tabs for vehicle, insurance, registration, and signed PDF documents
+    - Test enrollment creator: Generate complete test data with sample photos for workflow validation
+    - Real-time dashboard sync status tracking with detailed error reporting
     - No password required (as of latest update)
 - SQLite database (with JSON fallback for environments without sqlite3)
+- **External Dashboard Integration**: Automatic transmission of enrollment data to Replit dashboard via REST API
 
 ## Requirements
 - Python 3.12+
@@ -46,19 +49,69 @@ Automated BYOV enrollment engine with VIN decoding, data collection, PDF generat
    ```
 
 ### Optional: Dashboard Integration
-To auto-create a technician record in the central BYOV Dashboard after each submission, set these environment variables before running Streamlit:
 
-```powershell
-set DASHBOARD_API_URL=https://your-dashboard-domain
-set WORKFLOW_INTERNAL_TOKEN=super-secret-shared-token
+The application now **automatically transmits enrollment data to a Replit dashboard** using a modern REST API integration.
+
+#### Configuration
+
+Set these secrets in Streamlit Cloud or in `.streamlit/secrets.toml`:
+
+```toml
+[replit]
+REPLIT_DASHBOARD_URL = "https://your-replit-dashboard.replit.app"
+REPLIT_DASHBOARD_USERNAME = "admin"
+REPLIT_DASHBOARD_PASSWORD = "your-secure-password"
 ```
 
-The app will:
-- Query `GET /api/technicians?techId=<TECH_ID>` to check existence.
-- POST to `/api/technicians` with header `X-Internal-Token` if missing.
-- Mark the status as `Pending` (dashboard or workflow can later patch to `Enrolled`).
+Or use environment variables:
 
-If variables are not set, it skips external sync cleanly and notes this in the success banner.
+```powershell
+set REPLIT_DASHBOARD_URL=https://your-replit-dashboard.replit.app
+set REPLIT_DASHBOARD_USERNAME=admin
+set REPLIT_DASHBOARD_PASSWORD=your-secure-password
+```
+
+#### Workflow
+
+1. **Enrollment Collection**: Users submit enrollments through the wizard (Tech Info → Vehicle & Docs → Policy & Signature → Review & Submit)
+2. **Admin Review**: Admins review enrollments in the Admin Control Center → Enrollments tab
+3. **One-Click Approval**: Click the **✅ Approve** button on any enrollment
+4. **Automatic Transmission**: The system:
+   - Authenticates with the Replit dashboard API
+   - Encodes all photos as base64 (max 10MB per photo)
+   - Sends technician data + photos in a single POST request to `/api/external/technicians`
+   - Handles success (201), partial success (207), or errors (400/500)
+   - Marks the enrollment as approved locally
+   - Displays detailed results and any failed photo uploads
+
+#### API Endpoint
+
+The integration uses the external technician creation endpoint:
+
+**POST** `/api/external/technicians`
+
+**Payload includes:**
+- Technician details (name, techId, region, district, enrollmentStatus, etc.)
+- Vehicle information (vinNumber, make, model, year)
+- Contact details (mobilePhoneNumber, techEmail)
+- Expiration dates (insuranceExpiration, registrationExpiration)
+- Photos array with base64-encoded images (vehicle, insurance, registration categories)
+
+**Response codes:**
+- `201` - Success: technician and all photos created
+- `207` - Partial success: technician created, some photos failed
+- `400` - Validation error
+- `500` - Server error
+
+#### Testing
+
+Use the built-in **Test Enrollment Creator** in the Admin Control Center:
+1. Navigate to Admin Control Center → Enrollments → Diagnostics & Maintenance
+2. Fill in test data (or use defaults)
+3. Upload sample photos
+4. Click **✅ Create Test Enrollment**
+5. Find the test enrollment in the list and click **✅ Approve**
+6. Verify the technician appears on your Replit dashboard with photos attached
 
 ### Optional: SendGrid Email Delivery
 You can switch email notifications (submission + rules) to SendGrid instead of raw SMTP.
@@ -114,4 +167,4 @@ Business Source License 1.1 (BSL-1.1)
 
 ---
 
-_Last updated: November 2025 — Added secure dashboard POST integration, internal token support & SendGrid email option._
+_Last updated: November 2025 — Integrated Replit dashboard transmission with one-click approval workflow. All enrollment data and photos are automatically transmitted via REST API on admin approval._
