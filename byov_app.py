@@ -722,7 +722,7 @@ def post_to_dashboard_single_request(record: dict, enrollment_id: int = None, en
     Create technician and attach photos in a single request using the external
     API that accepts base64-embedded photos.
 
-    Payload shape follows the external API the user provided. Photos are
+    Payload shape follows the external API specification. Photos are
     included as objects with `category` and `base64` (either data URL or raw
     base64). Enforces 10MB per photo limit.
     """
