@@ -764,19 +764,20 @@ def post_to_dashboard_single_request(record: dict, enrollment_id: int = None, en
         return {"error": "missing tech_id"}
 
     # Build payload mapping according to external API
+    # Use empty strings for missing optional string fields to avoid null validation errors
     payload = {
-        "name": record.get("full_name") or record.get("name"),
+        "name": record.get("full_name") or record.get("name") or "",
         "techId": tech_id,
-        "region": record.get("region") or record.get("state"),
-        "district": record.get("district"),
+        "region": record.get("region") or record.get("state") or "",
+        "district": record.get("district") or "",
         "enrollmentStatus": record.get("enrollmentStatus", "Enrolled"),
-        "truckId": record.get("truckId") or record.get("truck_id"),
-        "mobilePhoneNumber": record.get("mobilePhoneNumber") or record.get("mobile") or record.get("phone"),
-        "techEmail": record.get("techEmail") or record.get("email"),
-        "cityState": record.get("cityState"),
-        "vinNumber": record.get("vin") or record.get("vinNumber"),
-        "insuranceExpiration": format_date(record.get("insurance_exp") or record.get("insuranceExpiration")),
-        "registrationExpiration": format_date(record.get("registration_exp") or record.get("registrationExpiration")),
+        "truckId": record.get("truckId") or record.get("truck_id") or "",
+        "mobilePhoneNumber": record.get("mobilePhoneNumber") or record.get("mobile") or record.get("phone") or "",
+        "techEmail": record.get("techEmail") or record.get("email") or "",
+        "cityState": record.get("cityState") or "",
+        "vinNumber": record.get("vin") or record.get("vinNumber") or "",
+        "insuranceExpiration": format_date(record.get("insurance_exp") or record.get("insuranceExpiration")) or "",
+        "registrationExpiration": format_date(record.get("registration_exp") or record.get("registrationExpiration")) or "",
     }
 
     # Optional fields: vehicleMake/Model/Year/industry/dateStartedByov
