@@ -149,6 +149,15 @@ def init_db():
             )
         """)
         
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS app_settings (
+                id SERIAL PRIMARY KEY,
+                setting_key TEXT UNIQUE NOT NULL,
+                setting_value JSONB NOT NULL,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_enrollments_tech_id ON enrollments(tech_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_enrollment_id ON documents(enrollment_id)")
 
@@ -470,6 +479,38 @@ def load_enrollments() -> List[Dict[str, Any]]:
 def save_enrollments(records):
     """Legacy function - no-op for compatibility."""
     pass
+
+
+def get_approval_notification_settings() -> Optional[Dict[str, Any]]:
+    """Get the approval notification settings."""
+    with get_cursor() as cursor:
+        cursor.execute(
+            "SELECT setting_value FROM app_settings WHERE setting_key = %s",
+            ("approval_notification",)
+        )
+        row = cursor.fetchone()
+        if row:
+            value = row.get('setting_value') if isinstance(row, dict) else row[0]
+            if isinstance(value, str):
+                return json.loads(value)
+            return value
+        return None
+
+
+def save_approval_notification_settings(settings: Dict[str, Any]) -> bool:
+    """Save the approval notification settings."""
+    with get_cursor() as cursor:
+        cursor.execute("""
+            INSERT INTO app_settings (setting_key, setting_value, updated_at)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (setting_key) 
+            DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = EXCLUDED.updated_at
+        """, (
+            "approval_notification",
+            json.dumps(settings),
+            datetime.now()
+        ))
+    return True
 
 
 USE_SQLITE = False

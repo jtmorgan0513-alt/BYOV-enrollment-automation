@@ -32,6 +32,8 @@ if USE_POSTGRES:
         approve_enrollment,
         load_enrollments,
         save_enrollments,
+        get_approval_notification_settings,
+        save_approval_notification_settings,
     )
     
     get_all_notification_rules = get_notification_rules
@@ -349,18 +351,23 @@ else:
         conn.commit()
         conn.close()
 
-    def add_notification_rule(rule):
+    def add_notification_rule(rule_name, trigger, days_before, recipients, enabled=True):
+        """Add a notification rule with individual parameters."""
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
+        if isinstance(recipients, (list, tuple)):
+            recipients_str = ",".join(recipients)
+        else:
+            recipients_str = recipients
         cursor.execute("""
             INSERT INTO notification_rules (rule_name, trigger, days_before, recipients, enabled)
             VALUES (?, ?, ?, ?, ?)
         """, (
-            rule["rule_name"],
-            rule["trigger"],
-            rule.get("days_before"),
-            ",".join(rule["recipients"]),
-            1 if rule.get("enabled", True) else 0
+            rule_name,
+            trigger,
+            days_before,
+            recipients_str,
+            1 if enabled else 0
         ))
         conn.commit()
         conn.close()
@@ -442,5 +449,53 @@ else:
     def save_enrollments(records):
         """Legacy function - no-op for compatibility."""
         pass
+
+    def get_approval_notification_settings():
+        """Get the approval notification settings from SQLite."""
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS app_settings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    setting_key TEXT UNIQUE NOT NULL,
+                    setting_value TEXT NOT NULL,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.commit()
+            cursor.execute("SELECT setting_value FROM app_settings WHERE setting_key = ?", ("approval_notification",))
+            row = cursor.fetchone()
+            conn.close()
+            if row:
+                return json.loads(row[0])
+            return None
+        except Exception:
+            return None
+
+    def save_approval_notification_settings(settings):
+        """Save the approval notification settings to SQLite."""
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS app_settings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    setting_key TEXT UNIQUE NOT NULL,
+                    setting_value TEXT NOT NULL,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("""
+                INSERT OR REPLACE INTO app_settings (setting_key, setting_value, updated_at)
+                VALUES (?, ?, ?)
+            """, ("approval_notification", json.dumps(settings), datetime.now().isoformat()))
+            conn.commit()
+            conn.close()
+            return True
+        except Exception:
+            return False
+
+    get_all_notification_rules = get_notification_rules
 
     init_db()

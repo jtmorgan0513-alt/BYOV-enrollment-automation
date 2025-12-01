@@ -54,8 +54,10 @@ Preferred communication style: Simple, everyday language.
    - Record saved to database → PDF generated → Backup created → Optional email sent
 
 2. **Admin Approval Workflow:**
-   - Admin reviews enrollment in control center
-   - Approval triggers dashboard sync via REST API
+   - Admin reviews enrollments in control center with single-record selection
+   - Select a record → View full details in action panel → Approve/View/Delete
+   - Approval triggers dashboard sync via REST API + custom email notification
+   - Configurable approval notifications with recipient list, subject template, and PDF attachment options
    - Record status updated with approval metadata
    - Photos and documents transmitted to external dashboard
 
