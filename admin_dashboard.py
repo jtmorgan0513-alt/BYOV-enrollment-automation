@@ -131,12 +131,11 @@ def _build_enrollment_grid(enrollments, visible_columns):
     gb = GridOptionsBuilder.from_dataframe(df)
     gb.configure_selection(
         selection_mode="single", 
-        use_checkbox=True,
-        pre_selected_rows=[]
+        use_checkbox=False
     )
     gb.configure_column("id", hide=True)
     
-    gb.configure_column("Full Name", pinned="left", width=150)
+    gb.configure_column("Full Name", pinned="left", width=150, checkboxSelection=True)
     gb.configure_column("Tech ID", pinned="left", width=100)
     
     for field in ENROLLMENT_FIELDS:
