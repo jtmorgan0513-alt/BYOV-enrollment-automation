@@ -2868,7 +2868,7 @@ def page_admin_settings():
 def main():
     st.set_page_config(
         page_title="BYOV Program",
-        layout="centered",
+        layout="wide",
         initial_sidebar_state="collapsed",
     )
     
@@ -2880,8 +2880,12 @@ def main():
         }
         .main {
             background-color: var(--background-color);
-            max-width: 1200px;
             padding: 1rem;
+        }
+        /* Enrollment form container - centered and constrained */
+        .enrollment-form-container {
+            max-width: 800px;
+            margin: 0 auto;
         }
         /* Hide sidebar completely */
         [data-testid="stSidebar"] {
@@ -2998,6 +3002,16 @@ def main():
     
     # Main content area with header icon navigation
     if st.session_state.current_page == "New Enrollment":
+        # Center the enrollment form with max-width constraint
+        st.markdown("""
+            <style>
+            [data-testid="stMainBlockContainer"] {
+                max-width: 800px;
+                margin: 0 auto;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+        
         # Create header with logo and admin button
         logo_path = "Sears Image.png"
         header_col1, header_col2 = st.columns([9, 1])
