@@ -513,10 +513,151 @@ def save_approval_notification_settings(settings: Dict[str, Any]) -> bool:
     return True
 
 
+CHECKLIST_TASKS = [
+    {'key': 'approved_synced', 'name': 'Approved Enrollment & Synced to Dashboard', 'default_recipient': ''},
+    {'key': 'mileage_segno', 'name': 'Mileage form created in Segno', 'default_recipient': ''},
+    {'key': 'fleet_truck', 'name': 'Fleet Notified for Truck Number', 'default_recipient': ''},
+    {'key': 'inventory_assortment', 'name': 'Inventory Notified for Assortment', 'default_recipient': ''},
+    {'key': 'supplies_magnets', 'name': 'Supplies Notified for Magnets', 'default_recipient': ''},
+    {'key': 'policy_hshr', 'name': 'Signed Policy Form Sent to HSHRpaperwork', 'default_recipient': ''},
+    {'key': 'survey_completed', 'name': 'Survey Completed', 'default_recipient': ''},
+]
+
+
+def init_checklist_table():
+    """Initialize the enrollment_checklist table."""
+    with get_cursor(dict_cursor=False) as cursor:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS enrollment_checklist (
+                id SERIAL PRIMARY KEY,
+                enrollment_id INTEGER NOT NULL REFERENCES enrollments(id) ON DELETE CASCADE,
+                task_key TEXT NOT NULL,
+                task_name TEXT NOT NULL,
+                completed BOOLEAN DEFAULT FALSE,
+                completed_at TIMESTAMPTZ,
+                completed_by TEXT,
+                email_recipient TEXT,
+                email_sent BOOLEAN DEFAULT FALSE,
+                email_sent_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE(enrollment_id, task_key)
+            )
+        """)
+
+
+def create_checklist_for_enrollment(enrollment_id: int) -> bool:
+    """Create checklist tasks for a new enrollment."""
+    with get_cursor() as cursor:
+        for task in CHECKLIST_TASKS:
+            cursor.execute("""
+                INSERT INTO enrollment_checklist (enrollment_id, task_key, task_name, email_recipient)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (enrollment_id, task_key) DO NOTHING
+            """, (enrollment_id, task['key'], task['name'], task['default_recipient']))
+    return True
+
+
+def get_checklist_for_enrollment(enrollment_id: int) -> List[Dict[str, Any]]:
+    """Get all checklist tasks for an enrollment."""
+    with get_cursor() as cursor:
+        cursor.execute("""
+            SELECT id, enrollment_id, task_key, task_name, completed, completed_at, 
+                   completed_by, email_recipient, email_sent, email_sent_at, created_at
+            FROM enrollment_checklist
+            WHERE enrollment_id = %s
+            ORDER BY id
+        """, (enrollment_id,))
+        rows = cursor.fetchall()
+        results = []
+        for row in rows:
+            r = dict(row)
+            if r.get("completed_at"):
+                r["completed_at"] = str(r["completed_at"])
+            if r.get("email_sent_at"):
+                r["email_sent_at"] = str(r["email_sent_at"])
+            if r.get("created_at"):
+                r["created_at"] = str(r["created_at"])
+            results.append(r)
+        return results
+
+
+def update_checklist_task(task_id: int, completed: bool, completed_by: str = "Admin") -> bool:
+    """Update a checklist task's completion status."""
+    with get_cursor() as cursor:
+        if completed:
+            cursor.execute("""
+                UPDATE enrollment_checklist
+                SET completed = %s, completed_at = %s, completed_by = %s
+                WHERE id = %s
+            """, (completed, datetime.now(), completed_by, task_id))
+        else:
+            cursor.execute("""
+                UPDATE enrollment_checklist
+                SET completed = %s, completed_at = NULL, completed_by = NULL
+                WHERE id = %s
+            """, (completed, task_id))
+    return True
+
+
+def update_checklist_task_email(task_id: int, email_recipient: str) -> bool:
+    """Update the email recipient for a checklist task."""
+    with get_cursor() as cursor:
+        cursor.execute("""
+            UPDATE enrollment_checklist
+            SET email_recipient = %s
+            WHERE id = %s
+        """, (email_recipient, task_id))
+    return True
+
+
+def mark_checklist_email_sent(task_id: int) -> bool:
+    """Mark that the notification email was sent for a task."""
+    with get_cursor() as cursor:
+        cursor.execute("""
+            UPDATE enrollment_checklist
+            SET email_sent = TRUE, email_sent_at = %s
+            WHERE id = %s
+        """, (datetime.now(), task_id))
+    return True
+
+
+def get_checklist_task_recipients() -> Dict[str, str]:
+    """Get default email recipients for each task type from app_settings."""
+    with get_cursor() as cursor:
+        cursor.execute(
+            "SELECT setting_value FROM app_settings WHERE setting_key = %s",
+            ("checklist_recipients",)
+        )
+        row = cursor.fetchone()
+        if row:
+            value = row.get('setting_value') if isinstance(row, dict) else row[0]
+            if isinstance(value, str):
+                return json.loads(value)
+            return value
+        return {}
+
+
+def save_checklist_task_recipients(recipients: Dict[str, str]) -> bool:
+    """Save default email recipients for checklist tasks."""
+    with get_cursor() as cursor:
+        cursor.execute("""
+            INSERT INTO app_settings (setting_key, setting_value, updated_at)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (setting_key) 
+            DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = EXCLUDED.updated_at
+        """, (
+            "checklist_recipients",
+            json.dumps(recipients),
+            datetime.now()
+        ))
+    return True
+
+
 USE_SQLITE = False
 DB_PATH = None
 
 try:
     init_db()
+    init_checklist_table()
 except Exception as e:
     print(f"Warning: Could not initialize PostgreSQL database: {e}")
