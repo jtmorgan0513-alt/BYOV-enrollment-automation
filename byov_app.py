@@ -760,6 +760,11 @@ def post_to_dashboard_single_request(record: dict, enrollment_id: int = None, en
     date_started = format_date(record.get('submission_date') or record.get('dateStartedByov'))
     if date_started:
         payload['dateStartedByov'] = date_started
+    
+    # Referred by field
+    referred_by = record.get('referred_by') or record.get('referredBy') or ""
+    if referred_by:
+        payload['referredBy'] = referred_by
 
     # Collect documents (file paths) to include as base64 photos
     docs = []
