@@ -3023,14 +3023,62 @@ def main():
             </style>
         """, unsafe_allow_html=True)
         
-        # Create header with logo and admin button
+        # Create centered header with clickable logo (hidden admin access)
         logo_path = "static/sears_logo_brand.png"
-        header_col1, header_col2 = st.columns([9, 1])
-        with header_col1:
+        
+        # Center the logo and make it clickable for admin access
+        col_left, col_center, col_right = st.columns([1, 2, 1])
+        with col_center:
             if os.path.exists(logo_path):
-                st.image(logo_path, width=200)
-        with header_col2:
-            st.button("👤", key="admin_button", help="Admin Control Center", on_click=go_to_admin)
+                # CSS to make button invisible and overlay the logo
+                st.markdown("""
+                    <style>
+                    /* Hide the admin button completely but keep it functional */
+                    div[data-testid="stButton"]:has(button[kind="secondary"]) button {
+                        background: transparent !important;
+                        border: none !important;
+                        box-shadow: none !important;
+                        padding: 0 !important;
+                        margin-top: -50px !important;
+                        height: 50px !important;
+                        opacity: 0 !important;
+                    }
+                    .enrollment-header {
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        margin-bottom: 10px;
+                    }
+                    .enrollment-header img {
+                        max-width: 250px;
+                        cursor: pointer;
+                    }
+                    .enrollment-title {
+                        color: #0d6efd;
+                        font-size: 1.3rem;
+                        font-weight: 600;
+                        text-align: center;
+                        margin-top: 8px;
+                    }
+                    </style>
+                """, unsafe_allow_html=True)
+                
+                # Display logo with title
+                with open(logo_path, "rb") as f:
+                    logo_bytes = f.read()
+                import base64
+                logo_b64 = base64.b64encode(logo_bytes).decode()
+                
+                st.markdown(f"""
+                    <div class="enrollment-header">
+                        <img src="data:image/png;base64,{logo_b64}" alt="Sears Home Services">
+                        <div class="enrollment-title">BYOV Technician Enrollment</div>
+                    </div>
+                """, unsafe_allow_html=True)
+                
+                # Invisible admin button (triple-click or know it's there)
+                if st.button("ㅤ", key="hidden_admin", use_container_width=True):
+                    go_to_admin()
         
         page_new_enrollment()
     
