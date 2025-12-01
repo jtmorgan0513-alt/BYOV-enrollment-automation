@@ -1,0 +1,123 @@
+{
+  "timestamp": "2025-12-01T01:19:47.143900",
+  "database_type": "postgresql",
+  "enrollments": [
+    {
+      "id": 5,
+      "full_name": "test",
+      "tech_id": "Tyler Morgan",
+      "district": "8175",
+      "state": "Alabama",
+      "referred_by": "test",
+      "industries": [
+        "Cook",
+        "Dish",
+        "Laundry"
+      ],
+      "industry": [
+        "Cook",
+        "Dish",
+        "Laundry"
+      ],
+      "year": "2024",
+      "make": "FORD",
+      "model": "F-150",
+      "vin": "1FTEW2LP5RKE34425",
+      "insurance_exp": "2025-11-30",
+      "registration_exp": "2025-11-30",
+      "template_used": "template_1.pdf",
+      "comment": "",
+      "submission_date": "2025-11-30 16:11:23.511722+00:00",
+      "approved": 1,
+      "approved_at": "2025-12-01 01:13:36.561138+00:00",
+      "approved_by": "Admin",
+      "dashboard_tech_id": "cd44ca0b-12ef-4351-a093-5a862538e329",
+      "last_upload_report": {
+        "response": {
+          "message": "Technician created successfully with 6 photos. 1 photo(s) failed.",
+          "success": true,
+          "technician": {
+            "id": "cd44ca0b-12ef-4351-a093-5a862538e329",
+            "name": "test",
+            "region": "Alabama",
+            "techId": "TYLER MORGAN",
+            "truckId": "",
+            "comments": null,
+            "district": "8175",
+            "industry": "Cook, Dish, Laundry",
+            "isActive": true,
+            "cityState": "",
+            "createdAt": "2025-12-01T01:13:33.883Z",
+            "fleetTech": null,
+            "techEmail": "",
+            "updatedAt": "2025-12-01T01:13:33.883Z",
+            "vinNumber": "1FTEW2LP5RKE34425",
+            "referredBy": null,
+            "mileageRate": "0.70",
+            "vehicleMake": "FORD",
+            "vehicleYear": "2024",
+            "planningArea": null,
+            "vehicleModel": "F-150",
+            "enrollmentType": null,
+            "milesPerGallon": "19.0",
+            "dateStartedByov": "2025-11-30",
+            "enrollmentStatus": "Enrolled",
+            "planningAreaName": null,
+            "mobilePhoneNumber": "",
+            "lastAdminAlertSent": null,
+            "insuranceExpiration": "2025-11-30",
+            "insuranceDaysRemaining": null,
+            "registrationExpiration": "2025-11-30",
+            "lastDocumentReminderSent": null,
+            "lastInsuranceReminderSent": null,
+            "registrationDaysRemaining": null,
+            "lastRegistrationReminderSent": null
+          },
+          "photoErrors": [
+            "Invalid photo category: signature"
+          ],
+          "photosCreated": 6
+        },
+        "photo_count": 7
+      },
+      "documents": [
+        {
+          "id": 29,
+          "doc_type": "vehicle",
+          "file_path": "uploads/Tyler Morgan_3b0d305c-9bfc-4064-b24d-c02471911d7e/vehicle/vehicle_1.jpeg"
+        },
+        {
+          "id": 30,
+          "doc_type": "vehicle",
+          "file_path": "uploads/Tyler Morgan_3b0d305c-9bfc-4064-b24d-c02471911d7e/vehicle/vehicle_2.jpeg"
+        },
+        {
+          "id": 31,
+          "doc_type": "vehicle",
+          "file_path": "uploads/Tyler Morgan_3b0d305c-9bfc-4064-b24d-c02471911d7e/vehicle/vehicle_3.jpeg"
+        },
+        {
+          "id": 32,
+          "doc_type": "vehicle",
+          "file_path": "uploads/Tyler Morgan_3b0d305c-9bfc-4064-b24d-c02471911d7e/vehicle/vehicle_4.jpeg"
+        },
+        {
+          "id": 33,
+          "doc_type": "insurance",
+          "file_path": "uploads/Tyler Morgan_3b0d305c-9bfc-4064-b24d-c02471911d7e/insurance/insurance_1.jpeg"
+        },
+        {
+          "id": 34,
+          "doc_type": "registration",
+          "file_path": "uploads/Tyler Morgan_3b0d305c-9bfc-4064-b24d-c02471911d7e/registration/registration_1.jpeg"
+        },
+        {
+          "id": 35,
+          "doc_type": "signature",
+          "file_path": "pdfs/Tyler Morgan_3b0d305c-9bfc-4064-b24d-c02471911d7e.pdf"
+        }
+      ]
+    }
+  ],
+  "notification_rules": []
+}
