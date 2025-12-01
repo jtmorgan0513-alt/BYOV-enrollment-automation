@@ -898,7 +898,7 @@ def page_admin_control_center():
     st.session_state.setdefault("selected_enrollment_id", None)
     st.session_state.setdefault("visible_columns", {'district', 'state', 'year', 'make', 'model', 'vin', 'submission_date', 'approved'})
     
-    main_tabs = st.tabs(["📋 Enrollments", "📧 Email Config", "🔔 Approval Notifications", "📊 Overview"])
+    main_tabs = st.tabs(["📋 Enrollments", "🔔 Approval Notifications"])
     
     with main_tabs[0]:
         if not enrollments:
@@ -928,13 +928,7 @@ def page_admin_control_center():
                 _render_action_panel(st.session_state.selected_enrollment_id, enrollments)
     
     with main_tabs[1]:
-        _notification_config_page()
-    
-    with main_tabs[2]:
         _global_approval_notification_settings_page()
-    
-    with main_tabs[3]:
-        _overview_page(enrollments)
 
 
 if __name__ == '__main__':
