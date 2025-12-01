@@ -421,6 +421,212 @@ def send_pdf_to_hr(record, hr_email, custom_subject=None):
     )
 
 
+def get_hr_notification_html(record):
+    """Generate HTML email template for HR notification with signed PDF.
+    Uses same styling as initial enrollment email but with limited fields.
+    """
+    submission_date = record.get('submission_date', '')
+    formatted_date = submission_date
+    if submission_date:
+        try:
+            dt = datetime.fromisoformat(submission_date)
+            formatted_date = dt.strftime("%m/%d/%Y")
+        except Exception:
+            pass
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>BYOV Signed Policy Form</title>
+    </head>
+    <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f7fa;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            
+            <div style="text-align: center; padding: 20px; background-color: #ffffff; border-bottom: 2px solid #0066CC;">
+                <img src="cid:sears_logo" alt="Sears Home Services" style="max-width: 250px; height: auto; display: block; margin: 0 auto;">
+            </div>
+            
+            <!-- Header Banner -->
+            <div style="background-color: #e8f4fc; padding: 20px; text-align: center; border-bottom: 3px solid #0d6efd;">
+                <h2 style="color: #0d6efd; margin: 0; font-size: 22px;">
+                    BYOV Signed Policy Form
+                </h2>
+                <p style="color: #666; margin: 10px 0 0 0; font-size: 14px;">
+                    Please see attached signed policy form for the following technician
+                </p>
+            </div>
+            
+            <!-- Content -->
+            <div style="padding: 30px;">
+                
+                <!-- Technician Information Card -->
+                <div style="background: linear-gradient(to right, #f8f9fa, #ffffff); border-left: 4px solid #0d6efd; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                    <h3 style="color: #0d6efd; margin: 0 0 15px 0; font-size: 16px; text-transform: uppercase; letter-spacing: 1px;">
+                        Technician Details
+                    </h3>
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tr>
+                            <td style="padding: 8px 0; color: #666; width: 140px;">Name:</td>
+                            <td style="padding: 8px 0; color: #333; font-weight: 600;">{record.get('full_name', 'N/A')}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0; color: #666;">Tech ID:</td>
+                            <td style="padding: 8px 0; color: #333; font-weight: 600;">{record.get('tech_id', 'N/A')}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0; color: #666;">District:</td>
+                            <td style="padding: 8px 0; color: #333;">{record.get('district', 'N/A')}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0; color: #666;">Date of Enrollment:</td>
+                            <td style="padding: 8px 0; color: #333;">{formatted_date}</td>
+                        </tr>
+                    </table>
+                </div>
+                
+                <!-- Footer -->
+                <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; text-align: center;">
+                    <p style="color: #666; margin: 0; font-size: 12px;">
+                        This is an automated notification from the BYOV Enrollment System.
+                        <br>The signed policy form is attached to this email.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    return html
+
+
+def send_hr_policy_notification(record, pdf_path, hr_email="tyler.morgan@transformco.com"):
+    """Send the signed policy PDF to HR with technician details.
+    
+    Args:
+        record: Enrollment record dictionary
+        pdf_path: Path to the signed PDF file
+        hr_email: HR email address (defaults to tyler.morgan@transformco.com)
+    
+    Returns dict with 'success' or 'error' key.
+    """
+    if not hr_email:
+        return {'error': 'No HR email address specified'}
+    
+    if not pdf_path or not file_storage.file_exists(pdf_path):
+        return {'error': 'Signed PDF not found'}
+    
+    subject = f"BYOV Signed Policy Form - {record.get('full_name', 'Unknown')} (Tech ID: {record.get('tech_id', 'N/A')})"
+    html_body = get_hr_notification_html(record)
+    
+    try:
+        sg_key = None
+        try:
+            sg_key = st.secrets.get("SENDGRID_API_KEY")
+        except Exception:
+            pass
+        if not sg_key:
+            sg_key = os.environ.get("SENDGRID_API_KEY")
+        
+        sender = None
+        app_password = None
+        try:
+            sender = st.secrets.get("gmail", {}).get("sender")
+            app_password = st.secrets.get("gmail", {}).get("app_password")
+        except Exception:
+            pass
+        
+        pdf_bytes = file_storage.read_file(pdf_path)
+        pdf_filename = os.path.basename(pdf_path)
+        
+        logo_bytes = None
+        if os.path.exists(LOGO_PATH):
+            with open(LOGO_PATH, 'rb') as f:
+                logo_bytes = f.read()
+        
+        if sg_key:
+            try:
+                attachments = [{
+                    "content": base64.b64encode(pdf_bytes).decode('utf-8'),
+                    "filename": pdf_filename,
+                    "type": "application/pdf",
+                    "disposition": "attachment"
+                }]
+                
+                if logo_bytes:
+                    attachments.append({
+                        "content": base64.b64encode(logo_bytes).decode('utf-8'),
+                        "filename": "sears_logo.png",
+                        "type": "image/png",
+                        "disposition": "inline",
+                        "content_id": "sears_logo"
+                    })
+                
+                payload = {
+                    "personalizations": [{"to": [{"email": hr_email}]}],
+                    "from": {"email": os.environ.get("SENDGRID_FROM_EMAIL", "noreply@searshomeservices.com")},
+                    "subject": subject,
+                    "content": [{"type": "text/html", "value": html_body}],
+                    "attachments": attachments
+                }
+                
+                resp = requests.post(
+                    "https://api.sendgrid.com/v3/mail/send",
+                    headers={
+                        "Authorization": f"Bearer {sg_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json=payload,
+                    timeout=30
+                )
+                
+                if 200 <= resp.status_code < 300:
+                    return {'success': True}
+                else:
+                    return {'error': f'SendGrid error: {resp.status_code}'}
+            except Exception as e:
+                if sender and app_password:
+                    pass
+                else:
+                    return {'error': str(e)}
+        
+        if sender and app_password:
+            msg = MIMEMultipart('related')
+            msg['Subject'] = subject
+            msg['From'] = sender
+            msg['To'] = hr_email
+            msg['Date'] = formatdate(localtime=True)
+            
+            msg_alt = MIMEMultipart('alternative')
+            msg.attach(msg_alt)
+            
+            msg_alt.attach(MIMEText(html_body, 'html'))
+            
+            if logo_bytes:
+                logo_img = MIMEImage(logo_bytes)
+                logo_img.add_header('Content-ID', '<sears_logo>')
+                logo_img.add_header('Content-Disposition', 'inline', filename='sears_logo.png')
+                msg.attach(logo_img)
+            
+            pdf_part = MIMEApplication(pdf_bytes, _subtype='pdf')
+            pdf_part.add_header('Content-Disposition', 'attachment', filename=pdf_filename)
+            msg.attach(pdf_part)
+            
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+                server.login(sender, app_password)
+                server.sendmail(sender, [hr_email], msg.as_string())
+            
+            return {'success': True}
+        
+        return {'error': 'No email credentials configured (SendGrid or Gmail)'}
+        
+    except Exception as e:
+        return {'error': str(e)}
+
+
 def get_custom_html_template(record, selected_fields, field_metadata):
     """Generate HTML email with only the selected fields."""
     

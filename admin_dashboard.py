@@ -272,15 +272,13 @@ def _render_overview_tab(row, enrollment_id):
         signature_pdf = [d["file_path"] for d in docs if d["doc_type"] == "signature"]
         
         if signature_pdf and file_storage.file_exists(signature_pdf[0]):
-            pdf_bytes = file_storage.read_file(signature_pdf[0])
-            st.download_button(
-                label="⬇️ Download PDF",
-                data=pdf_bytes,
-                file_name=os.path.basename(signature_pdf[0]),
-                mime="application/pdf",
-                key=f"dl_pdf_{enrollment_id}",
-                use_container_width=True
-            )
+            if st.button("📧 Send PDF to HR", key=f"send_hr_{enrollment_id}", use_container_width=True):
+                from notifications import send_hr_policy_notification
+                result = send_hr_policy_notification(row, signature_pdf[0])
+                if result.get('success'):
+                    st.success("Signed policy form sent to HR!")
+                else:
+                    st.error(f"Error: {result.get('error', 'Unknown error')}")
         else:
             st.button("No PDF", disabled=True, use_container_width=True)
     
@@ -324,15 +322,7 @@ def _handle_approval(row, enrollment_id):
             except Exception:
                 pass
             
-            notif_result = _send_approval_notification(record, enrollment_id)
-            
             st.success("Enrollment approved and synced to dashboard!")
-            
-            if notif_result is True:
-                st.info("Approval notification sent.")
-            elif notif_result and notif_result.get('error'):
-                st.warning(f"Notification failed: {notif_result.get('error')}")
-            
             st.rerun()
         elif status_code == 207:
             try:

@@ -57,7 +57,7 @@ Preferred communication style: Simple, everyday language.
    - Admin reviews enrollments in two-pane control center:
      - **Top Pane:** AgGrid spreadsheet with all enrollment fields, column visibility controls (by group), and single-row selection
      - **Bottom Pane:** Tabbed action panel (Overview | Checklist | Documents)
-   - **Overview Tab:** Summary card, Approve button, Download PDF, Send Notification, Delete
+   - **Overview Tab:** Summary card, Approve & Sync button, Send PDF to HR button, Send Notification button, Delete
    - **Checklist Tab:** Task tracking with 6 required tasks per enrollment:
      - Approved Enrollment & Synced to Dashboard
      - Signed Policy Form Sent to HSHRpaperwork
