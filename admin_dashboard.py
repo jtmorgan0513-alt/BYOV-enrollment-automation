@@ -300,8 +300,9 @@ def _send_approval_notification(record, enrollment_id):
 
 
 def _enrollments_tab(enrollments):
-    """Enrollments management tab with integrated selection"""
+    """Enrollments management tab with grid table selection"""
     import pandas as pd
+    from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
     
     st.subheader("Enrollments")
     
@@ -311,9 +312,6 @@ def _enrollments_tab(enrollments):
 
     st.session_state.setdefault("selected_enrollment_id", None)
     st.session_state.setdefault("ecc_search", "")
-    st.session_state.setdefault("ecc_page", 0)
-    st.session_state.setdefault("ecc_page_size", 10)
-    st.session_state.setdefault("delete_confirm", {})
 
     q = st.text_input("Search (Name, Tech ID, VIN)", value=st.session_state.ecc_search)
     st.session_state.ecc_search = q
@@ -327,34 +325,9 @@ def _enrollments_tab(enrollments):
         if q.lower() in hay:
             filtered.append(r)
 
-    total = len(filtered)
-    page_size = st.session_state.ecc_page_size
-    page = st.session_state.ecc_page
-    max_page = max(0, (total - 1) // page_size)
-
-    col_prev, col_next, col_info = st.columns([1, 1, 4])
-    with col_prev:
-        if st.button("◀ Prev", disabled=page <= 0):
-            st.session_state.ecc_page = max(0, page - 1)
-            st.rerun()
-
-    with col_next:
-        if st.button("Next ▶", disabled=page >= max_page):
-            st.session_state.ecc_page = min(max_page, page + 1)
-            st.rerun()
-
-    with col_info:
-        st.write(f"Page {page+1} of {max_page+1} — {total} records")
-
-    start = page * page_size
-    end = start + page_size
-    page_rows = filtered[start:end]
-
-    st.markdown("#### Select a record to view details and take action")
-    
-    for row in page_rows:
+    df_data = []
+    for row in filtered:
         enrollment_id = row.get('id')
-        is_selected = st.session_state.selected_enrollment_id == enrollment_id
         is_approved = row.get('approved', 0) == 1
         
         vehicle_info = f"{row.get('year', '')} {row.get('make', '')} {row.get('model', '')}".strip()
@@ -369,55 +342,49 @@ def _enrollments_tab(enrollments):
             except Exception:
                 date_enrolled = submission_date
         
-        if is_selected:
-            card_style = "background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%); border: 2px solid #0d6efd;"
-            text_color = "white"
-            badge_bg = "rgba(255,255,255,0.2)"
-        else:
-            card_style = "background: #f8f9fa; border: 1px solid #dee2e6;"
-            text_color = "#333"
-            badge_bg = "#e9ecef"
-        
-        st.markdown(f"""
-        <div style="
-            {card_style}
-            padding: 12px 16px;
-            border-radius: 10px;
-            margin-bottom: 8px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        ">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <span style="color: {text_color}; font-weight: 600; font-size: 15px;">
-                        {row.get('full_name', 'N/A')}
-                    </span>
-                    <span style="color: {'rgba(255,255,255,0.8)' if is_selected else '#666'}; font-size: 13px; margin-left: 10px;">
-                        Tech ID: {row.get('tech_id', 'N/A')} | {vehicle_info}
-                    </span>
-                </div>
-                <div style="display: flex; gap: 8px; align-items: center;">
-                    <span style="background: {badge_bg}; color: {text_color}; padding: 4px 10px; border-radius: 12px; font-size: 11px;">
-                        {date_enrolled}
-                    </span>
-                    <span style="background: {'#10b981' if is_approved else '#f59e0b'}; color: white; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600;">
-                        {status_badge}
-                    </span>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        col1, col2 = st.columns([1, 5])
-        with col1:
-            btn_label = "● Selected" if is_selected else "○ Select"
-            btn_type = "primary" if is_selected else "secondary"
-            if st.button(btn_label, key=f"select_{enrollment_id}", type=btn_type):
-                if is_selected:
-                    st.session_state.selected_enrollment_id = None
-                else:
-                    st.session_state.selected_enrollment_id = enrollment_id
-                st.rerun()
+        df_data.append({
+            'id': enrollment_id,
+            'Name': row.get('full_name', 'N/A'),
+            'Tech ID': row.get('tech_id', 'N/A'),
+            'Vehicle': vehicle_info,
+            'VIN': row.get('vin', 'N/A'),
+            'Submitted': date_enrolled,
+            'Status': status_badge
+        })
+    
+    df = pd.DataFrame(df_data)
+    
+    if len(df) == 0:
+        st.info("No enrollments found.")
+        return
+    
+    gb = GridOptionsBuilder.from_dataframe(df)
+    gb.configure_selection(selection_mode="single", use_checkbox=True)
+    gb.configure_column("id", hide=True)
+    gb.configure_column("Name", width=150)
+    gb.configure_column("Tech ID", width=100)
+    gb.configure_column("Vehicle", width=200)
+    gb.configure_column("VIN", width=150)
+    gb.configure_column("Submitted", width=120)
+    gb.configure_column("Status", width=120)
+    
+    grid_options = gb.build()
+    
+    grid_response = AgGrid(
+        df,
+        gridOptions=grid_options,
+        update_mode=GridUpdateMode.SELECTION_CHANGED,
+        allow_unsafe_jscode=False,
+        fit_columns_on_grid_load=True,
+        height=300
+    )
+    
+    selected_rows = grid_response['selected_rows']
+    if len(selected_rows) > 0:
+        selected_id = selected_rows.iloc[0]['id']
+        st.session_state.selected_enrollment_id = int(selected_id)
+    else:
+        st.session_state.selected_enrollment_id = None
     
     if st.session_state.selected_enrollment_id:
         _render_action_panel(st.session_state.selected_enrollment_id, enrollments)
