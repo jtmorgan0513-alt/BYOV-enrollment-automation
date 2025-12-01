@@ -156,7 +156,7 @@ def _build_enrollment_grid(enrollments, visible_columns):
     
     selected_rows = grid_response['selected_rows']
     selected_id = None
-    if len(selected_rows) > 0:
+    if selected_rows is not None and len(selected_rows) > 0:
         selected_id = int(selected_rows.iloc[0]['id'])
     
     return grid_response, selected_id
