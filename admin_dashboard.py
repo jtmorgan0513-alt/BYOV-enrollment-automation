@@ -129,7 +129,11 @@ def _build_enrollment_grid(enrollments, visible_columns):
         return None, None
     
     gb = GridOptionsBuilder.from_dataframe(df)
-    gb.configure_selection(selection_mode="single", use_checkbox=True)
+    gb.configure_selection(
+        selection_mode="single", 
+        use_checkbox=True,
+        pre_selected_rows=[]
+    )
     gb.configure_column("id", hide=True)
     
     gb.configure_column("Full Name", pinned="left", width=150)
@@ -151,7 +155,9 @@ def _build_enrollment_grid(enrollments, visible_columns):
         allow_unsafe_jscode=False,
         fit_columns_on_grid_load=False,
         height=350,
-        theme='streamlit'
+        theme='streamlit',
+        columns_auto_size_mode=1,
+        key='enrollment_grid'
     )
     
     selected_rows = grid_response['selected_rows']
