@@ -2071,6 +2071,13 @@ def wizard_step_4():
 def page_new_enrollment():
     """Main enrollment page with wizard navigation"""
     
+    # Display header logo
+    col_logo, col_spacer = st.columns([2, 1])
+    with col_logo:
+        st.image("static/sears_header_logo.jpg", use_container_width=True)
+    
+    st.markdown("---")
+    
     # Initialize wizard step if not exists
     if 'wizard_step' not in st.session_state:
         st.session_state.wizard_step = 1
