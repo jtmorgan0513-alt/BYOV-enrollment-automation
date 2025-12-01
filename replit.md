@@ -56,8 +56,19 @@ Preferred communication style: Simple, everyday language.
 2. **Admin Approval Workflow:**
    - Admin reviews enrollments in two-pane control center:
      - **Top Pane:** AgGrid spreadsheet with all enrollment fields, column visibility controls (by group), and single-row selection
-     - **Bottom Pane:** Tabbed action panel (Overview | Documents | Notification Settings)
+     - **Bottom Pane:** Tabbed action panel (Overview | Checklist | Documents | Notification Settings)
    - **Overview Tab:** Summary card, Approve button, Download PDF, Send Notification, Delete
+   - **Checklist Tab:** Task tracking with 7 required tasks per enrollment:
+     - Approved Enrollment & Synced to Dashboard
+     - Mileage form created in Segno
+     - Fleet Notified for Truck Number
+     - Inventory Notified for Assortment
+     - Supplies Notified for Magnets
+     - Signed Policy Form Sent to HSHRpaperwork
+     - Survey Completed
+     - Each task has: checkbox for completion, email recipient field, send notification button
+     - Progress bar shows completion status
+     - Email notifications include Sears branding and technician details
    - **Documents Tab:** Inline PDF preview via iframe, photo thumbnails by category (Vehicle, Registration, Insurance)
    - **Notification Settings Tab:** 
      - Field selector checkboxes (choose which data fields to include in email)
