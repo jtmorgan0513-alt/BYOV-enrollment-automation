@@ -2998,12 +2998,19 @@ def main():
     if 'current_page' not in st.session_state:
         st.session_state.current_page = "New Enrollment"
     
+    # Initialize admin authentication state
+    if 'admin_authenticated' not in st.session_state:
+        st.session_state.admin_authenticated = False
+    
     # Check for admin mode
     admin_mode = st.query_params.get("admin") == "true"
     
     # Navigation callback functions
     def go_to_admin():
-        st.session_state.current_page = "Admin Control Center"
+        if st.session_state.admin_authenticated:
+            st.session_state.current_page = "Admin Control Center"
+        else:
+            st.session_state.current_page = "Admin Login"
     
     def go_to_enrollment():
         st.session_state.current_page = "New Enrollment"
@@ -3086,19 +3093,67 @@ def main():
         
         page_new_enrollment()
     
+    elif st.session_state.current_page == "Admin Login":
+        # Admin login page
+        logo_path = "static/sears_logo_brand.png"
+        
+        col_left, col_center, col_right = st.columns([1, 2, 1])
+        with col_center:
+            if os.path.exists(logo_path):
+                st.image(logo_path, width=200)
+            
+            st.markdown("### Admin Login")
+            st.markdown("Please enter your credentials to access the Admin Control Center.")
+            
+            with st.form("admin_login_form"):
+                username = st.text_input("Username")
+                password = st.text_input("Password", type="password")
+                submitted = st.form_submit_button("Login", use_container_width=True, type="primary")
+                
+                if submitted:
+                    admin_user = os.environ.get("ADMIN_USERNAME", "admin")
+                    admin_pass = os.environ.get("ADMIN_PASSWORD", "admin123")
+                    
+                    if username == admin_user and password == admin_pass:
+                        st.session_state.admin_authenticated = True
+                        st.session_state.current_page = "Admin Control Center"
+                        st.rerun()
+                    else:
+                        st.error("Invalid username or password")
+            
+            st.markdown("---")
+            if st.button("Back to Enrollment", use_container_width=True):
+                go_to_enrollment()
+                st.rerun()
+    
     elif st.session_state.current_page == "Admin Control Center":
+        # Verify authentication
+        if not st.session_state.admin_authenticated:
+            st.session_state.current_page = "Admin Login"
+            st.rerun()
+        
         # Header with logo and back button
         logo_path = "static/sears_logo_brand.png"
-        header_col1, header_col2 = st.columns([9, 1])
+        header_col1, header_col2, header_col3 = st.columns([8, 1, 1])
         with header_col1:
             if os.path.exists(logo_path):
                 st.image(logo_path, width=200)
         with header_col2:
+            if st.button("Logout", key="logout_button", help="Logout"):
+                st.session_state.admin_authenticated = False
+                st.session_state.current_page = "New Enrollment"
+                st.rerun()
+        with header_col3:
             st.button("⬅", key="back_button", help="Back to Enrollment", on_click=go_to_enrollment)
         
         page_admin_control_center()
     
     elif st.session_state.current_page == "Admin Settings":
+        # Verify authentication
+        if not st.session_state.admin_authenticated:
+            st.session_state.current_page = "Admin Login"
+            st.rerun()
+        
         # Header with back button
         col1, col2 = st.columns([9, 1])
         with col2:

@@ -35,17 +35,19 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 39513
-externalPort = 3000
+localPort = 38757
+externalPort = 3002
 
 [[ports]]
-localPort = 41295
-externalPort = 3001
+localPort = 39513
+externalPort = 3000
 
 [userenv]
 
 [userenv.shared]
 SENDGRID_FROM_EMAIL = "notifications@shs.com"
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = "admin123"
 
 [agent]
 expertMode = true
