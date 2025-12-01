@@ -54,10 +54,17 @@ Preferred communication style: Simple, everyday language.
    - Record saved to database → PDF generated → Backup created → Optional email sent
 
 2. **Admin Approval Workflow:**
-   - Admin reviews enrollments in control center with single-record selection
-   - Select a record → View full details in action panel → Approve/View/Delete
+   - Admin reviews enrollments in two-pane control center:
+     - **Top Pane:** AgGrid spreadsheet with all enrollment fields, column visibility controls (by group), and single-row selection
+     - **Bottom Pane:** Tabbed action panel (Overview | Documents | Notification Settings)
+   - **Overview Tab:** Summary card, Approve button, Download PDF, Send Notification, Delete
+   - **Documents Tab:** Inline PDF preview via iframe, photo thumbnails by category (Vehicle, Registration, Insurance)
+   - **Notification Settings Tab:** 
+     - Field selector checkboxes (choose which data fields to include in email)
+     - Document selector checkboxes (choose which photos/PDFs to attach)
+     - Live email preview showing exactly what will be sent
    - Approval triggers dashboard sync via REST API + custom email notification
-   - Configurable approval notifications with recipient list, subject template, and PDF attachment options
+   - `send_custom_notification` function generates emails using only selected fields and attaches only selected documents
    - Record status updated with approval metadata
    - Photos and documents transmitted to external dashboard
 
