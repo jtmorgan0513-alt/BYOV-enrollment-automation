@@ -3024,7 +3024,7 @@ def main():
         """, unsafe_allow_html=True)
         
         # Create header with logo and admin button
-        logo_path = "Sears Image.png"
+        logo_path = "static/sears_logo_small.png"
         header_col1, header_col2 = st.columns([9, 1])
         with header_col1:
             if os.path.exists(logo_path):
@@ -3036,7 +3036,7 @@ def main():
     
     elif st.session_state.current_page == "Admin Control Center":
         # Header with logo and back button
-        logo_path = "Sears Image.png"
+        logo_path = "static/sears_logo_small.png"
         header_col1, header_col2 = st.columns([9, 1])
         with header_col1:
             if os.path.exists(logo_path):
