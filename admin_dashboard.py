@@ -679,53 +679,6 @@ def _notification_config_page():
         2. Add to secrets.toml
         """)
     
-    st.markdown("---")
-    st.markdown("### Expiration Notification Rules")
-    st.caption("Configure automatic reminders for expiring documents.")
-    
-    rules = database.get_all_notification_rules()
-    
-    with st.expander("Add New Rule", expanded=len(rules) == 0):
-        with st.form("add_rule"):
-            rule_name = st.text_input("Rule Name", placeholder="e.g., Insurance Expiring Soon")
-            
-            trigger = st.selectbox("Trigger", [
-                "insurance_expiring_30days",
-                "insurance_expiring_7days",
-                "registration_expiring_30days",
-                "registration_expiring_7days"
-            ], format_func=lambda x: {
-                "insurance_expiring_30days": "Insurance Expiring (30 days)",
-                "insurance_expiring_7days": "Insurance Expiring (7 days)",
-                "registration_expiring_30days": "Registration Expiring (30 days)",
-                "registration_expiring_7days": "Registration Expiring (7 days)"
-            }.get(x, x))
-            
-            days_before = int(trigger.split("_")[-1].replace("days", "")) if "expiring" in trigger else None
-            
-            recipients = st.text_input("Recipients", placeholder="hr@company.com")
-            
-            if st.form_submit_button("Add Rule", type="primary"):
-                if rule_name and recipients:
-                    try:
-                        database.add_notification_rule(rule_name, trigger, days_before, recipients)
-                        st.success("Rule added!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error: {e}")
-    
-    if rules:
-        for rule in rules:
-            col1, col2, col3 = st.columns([3, 4, 1])
-            with col1:
-                st.write(f"**{rule['rule_name']}**")
-            with col2:
-                st.write(rule['recipients'][:40] + "..." if len(rule['recipients']) > 40 else rule['recipients'])
-            with col3:
-                if st.button("🗑️", key=f"del_rule_{rule['id']}"):
-                    database.delete_notification_rule(rule['id'])
-                    st.rerun()
-            st.markdown("---")
 
 
 def _overview_page(enrollments):
