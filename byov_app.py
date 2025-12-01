@@ -3033,16 +3033,6 @@ def main():
                 # CSS to make button invisible and overlay the logo
                 st.markdown("""
                     <style>
-                    /* Hide the admin button completely but keep it functional */
-                    div[data-testid="stButton"]:has(button[kind="secondary"]) button {
-                        background: transparent !important;
-                        border: none !important;
-                        box-shadow: none !important;
-                        padding: 0 !important;
-                        margin-top: -50px !important;
-                        height: 50px !important;
-                        opacity: 0 !important;
-                    }
                     .enrollment-header {
                         display: flex;
                         flex-direction: column;
@@ -3051,19 +3041,34 @@ def main():
                     }
                     .enrollment-header img {
                         max-width: 250px;
-                        cursor: pointer;
                     }
-                    .enrollment-title {
-                        color: #0d6efd;
-                        font-size: 1.3rem;
-                        font-weight: 600;
-                        text-align: center;
-                        margin-top: 8px;
+                    /* Style the admin button to look like title text */
+                    button[data-testid="stBaseButton-secondary"][kind="secondary"] {
+                        background: transparent !important;
+                        border: none !important;
+                        box-shadow: none !important;
+                        color: #0d6efd !important;
+                        font-size: 1.3rem !important;
+                        font-weight: 600 !important;
+                        padding: 8px 16px !important;
+                        cursor: pointer !important;
+                    }
+                    button[data-testid="stBaseButton-secondary"][kind="secondary"]:hover {
+                        text-decoration: underline !important;
+                        background: transparent !important;
+                        border: none !important;
+                    }
+                    button[data-testid="stBaseButton-secondary"][kind="secondary"]:active,
+                    button[data-testid="stBaseButton-secondary"][kind="secondary"]:focus {
+                        box-shadow: none !important;
+                        outline: none !important;
+                        background: transparent !important;
+                        border: none !important;
                     }
                     </style>
                 """, unsafe_allow_html=True)
                 
-                # Display logo with title
+                # Display logo
                 with open(logo_path, "rb") as f:
                     logo_bytes = f.read()
                 import base64
@@ -3072,12 +3077,11 @@ def main():
                 st.markdown(f"""
                     <div class="enrollment-header">
                         <img src="data:image/png;base64,{logo_b64}" alt="Sears Home Services">
-                        <div class="enrollment-title">BYOV Technician Enrollment</div>
                     </div>
                 """, unsafe_allow_html=True)
                 
-                # Invisible admin button (triple-click or know it's there)
-                if st.button("ㅤ", key="hidden_admin", use_container_width=True):
+                # Clickable title text that goes to admin
+                if st.button("BYOV Technician Enrollment", key="admin_title_btn", use_container_width=True):
                     go_to_admin()
         
         page_new_enrollment()
