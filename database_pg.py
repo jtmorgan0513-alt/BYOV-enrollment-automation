@@ -549,10 +549,10 @@ def create_checklist_for_enrollment(enrollment_id: int) -> bool:
     with get_cursor() as cursor:
         for task in CHECKLIST_TASKS:
             cursor.execute("""
-                INSERT INTO enrollment_checklist (enrollment_id, task_key, task_name, email_recipient)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO enrollment_checklist (enrollment_id, task_key, task_name)
+                VALUES (%s, %s, %s)
                 ON CONFLICT (enrollment_id, task_key) DO NOTHING
-            """, (enrollment_id, task['key'], task['name'], task['default_recipient']))
+            """, (enrollment_id, task['key'], task['name']))
     return True
 
 
