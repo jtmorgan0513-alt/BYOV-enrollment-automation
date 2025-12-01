@@ -781,7 +781,7 @@ def _render_action_panel(enrollment_id, enrollments):
     tech_name = row.get('full_name', 'Selected Record')
     st.markdown(f"### {tech_name}")
     
-    tabs = st.tabs(["📋 Overview", "✅ Checklist", "📄 Documents", "📧 Notification Settings"])
+    tabs = st.tabs(["📋 Overview", "✅ Checklist", "📄 Documents"])
     
     with tabs[0]:
         _render_overview_tab(row, enrollment_id)
@@ -791,9 +791,6 @@ def _render_action_panel(enrollment_id, enrollments):
     
     with tabs[2]:
         _render_documents_tab(row, enrollment_id)
-    
-    with tabs[3]:
-        _render_notification_settings_tab(row, enrollment_id)
 
 
 def _notification_config_page():
@@ -828,6 +825,129 @@ def _notification_config_page():
         1. Create Gmail App Password
         2. Add to secrets.toml
         """)
+
+
+def _global_approval_notification_settings_page():
+    """Global approval notification settings page."""
+    st.subheader("Approval Notification Settings")
+    st.caption("Configure what to include in email notifications when enrollments are approved. These settings apply to all enrollments.")
+    
+    settings = _get_approval_notification_settings()
+    
+    st.markdown("---")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("#### Fields to Include")
+        st.caption("Select which enrollment fields to include in the notification email.")
+        selected_fields = settings.get('selected_fields', [])
+        new_selected_fields = []
+        
+        groups = {}
+        for field in ENROLLMENT_FIELDS:
+            group = field['group']
+            if group not in groups:
+                groups[group] = []
+            groups[group].append(field)
+        
+        for group_name, fields in groups.items():
+            st.markdown(f"**{group_name}**")
+            for field in fields:
+                is_selected = field['key'] in selected_fields
+                if st.checkbox(
+                    field['label'], 
+                    value=is_selected, 
+                    key=f"global_field_{field['key']}"
+                ):
+                    new_selected_fields.append(field['key'])
+    
+    with col2:
+        st.markdown("#### Documents to Attach")
+        st.caption("Select which document types to attach to the notification email.")
+        selected_docs = settings.get('selected_docs', [])
+        new_selected_docs = []
+        
+        for doc_type in DOCUMENT_TYPES:
+            is_selected = doc_type['key'] in selected_docs
+            if st.checkbox(
+                doc_type['label'], 
+                value=is_selected, 
+                key=f"global_doc_{doc_type['key']}"
+            ):
+                new_selected_docs.append(doc_type['key'])
+    
+    st.markdown("---")
+    
+    st.markdown("#### Recipients & Subject")
+    
+    recipients = st.text_input(
+        "Email Recipients (comma-separated)",
+        value=settings.get('recipients', ''),
+        placeholder="hr@company.com, fleet@company.com",
+        key="global_recipients"
+    )
+    
+    subject_template = st.text_input(
+        "Subject Template",
+        value=settings.get('subject_template', 'BYOV Enrollment Approved: {full_name} (Tech ID: {tech_id})'),
+        help="Use placeholders: {full_name}, {tech_id}, {district}, {state}, {year}, {make}, {model}",
+        key="global_subject"
+    )
+    
+    enabled = st.checkbox(
+        "Enable automatic notifications on approval",
+        value=settings.get('enabled', False),
+        key="global_enabled"
+    )
+    
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        if st.button("💾 Save Settings", type="primary", key="save_global_settings"):
+            new_settings = {
+                'enabled': enabled,
+                'recipients': recipients,
+                'subject_template': subject_template,
+                'include_pdf': 'signature' in new_selected_docs,
+                'include_details': len(new_selected_fields) > 0,
+                'selected_fields': new_selected_fields,
+                'selected_docs': new_selected_docs
+            }
+            if _save_approval_notification_settings(new_settings):
+                st.success("Settings saved! These settings will apply to all future approval notifications.")
+                st.rerun()
+    
+    st.markdown("---")
+    st.markdown("#### Email Preview")
+    
+    preview_fields_html = ""
+    for field in ENROLLMENT_FIELDS:
+        if field['key'] in new_selected_fields:
+            preview_fields_html += f"<tr><td style='padding:4px 8px;font-weight:bold;'>{field['label']}:</td><td style='padding:4px 8px;'>[value]</td></tr>"
+    
+    attachments = [doc['label'] for doc in DOCUMENT_TYPES if doc['key'] in new_selected_docs]
+    attachments_text = ", ".join(attachments) if attachments else "None"
+    
+    subject_preview = subject_template.replace('{full_name}', '[Technician Name]').replace('{tech_id}', '[Tech ID]').replace('{district}', '[District]').replace('{state}', '[State]').replace('{year}', '[Year]').replace('{make}', '[Make]').replace('{model}', '[Model]')
+    
+    preview_html = f"""
+    <div style="border: 1px solid #ddd; border-radius: 8px; padding: 16px; background: #fafafa; font-family: Arial, sans-serif;">
+        <div style="border-bottom: 1px solid #eee; padding-bottom: 8px; margin-bottom: 12px;">
+            <strong>Subject:</strong> {subject_preview}
+        </div>
+        <div style="margin-bottom: 12px;">
+            <p>A new BYOV enrollment has been approved:</p>
+            <table style="border-collapse: collapse; margin: 12px 0;">
+                {preview_fields_html if preview_fields_html else '<tr><td style="color: #888;">No fields selected</td></tr>'}
+            </table>
+        </div>
+        <div style="border-top: 1px solid #eee; padding-top: 8px; font-size: 12px; color: #666;">
+            <strong>Attachments:</strong> {attachments_text}
+        </div>
+    </div>
+    """
+    
+    st.markdown(preview_html, unsafe_allow_html=True)
     
 
 
@@ -882,7 +1002,7 @@ def page_admin_control_center():
     st.session_state.setdefault("selected_enrollment_id", None)
     st.session_state.setdefault("visible_columns", {'district', 'state', 'year', 'make', 'model', 'vin', 'submission_date', 'approved'})
     
-    main_tabs = st.tabs(["📋 Enrollments", "📧 Email Config", "📊 Overview"])
+    main_tabs = st.tabs(["📋 Enrollments", "📧 Email Config", "🔔 Approval Notifications", "📊 Overview"])
     
     with main_tabs[0]:
         if not enrollments:
@@ -915,6 +1035,9 @@ def page_admin_control_center():
         _notification_config_page()
     
     with main_tabs[2]:
+        _global_approval_notification_settings_page()
+    
+    with main_tabs[3]:
         _overview_page(enrollments)
 
 

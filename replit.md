@@ -56,7 +56,7 @@ Preferred communication style: Simple, everyday language.
 2. **Admin Approval Workflow:**
    - Admin reviews enrollments in two-pane control center:
      - **Top Pane:** AgGrid spreadsheet with all enrollment fields, column visibility controls (by group), and single-row selection
-     - **Bottom Pane:** Tabbed action panel (Overview | Checklist | Documents | Notification Settings)
+     - **Bottom Pane:** Tabbed action panel (Overview | Checklist | Documents)
    - **Overview Tab:** Summary card, Approve button, Download PDF, Send Notification, Delete
    - **Checklist Tab:** Task tracking with 7 required tasks per enrollment:
      - Approved Enrollment & Synced to Dashboard
@@ -70,10 +70,12 @@ Preferred communication style: Simple, everyday language.
      - Progress bar shows completion status
      - Email notifications include Sears branding and technician details
    - **Documents Tab:** Inline PDF preview via iframe, photo thumbnails by category (Vehicle, Registration, Insurance)
-   - **Notification Settings Tab:** 
+   - **Global Approval Notifications Tab** (top-level tab next to Email Config):
      - Field selector checkboxes (choose which data fields to include in email)
      - Document selector checkboxes (choose which photos/PDFs to attach)
+     - Recipients and subject template configuration
      - Live email preview showing exactly what will be sent
+     - Settings apply to all enrollments when approved
    - Approval triggers dashboard sync via REST API + custom email notification
    - `send_custom_notification` function generates emails using only selected fields and attaches only selected documents
    - Record status updated with approval metadata
