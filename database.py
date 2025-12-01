@@ -34,6 +34,14 @@ if USE_POSTGRES:
         save_enrollments,
         get_approval_notification_settings,
         save_approval_notification_settings,
+        CHECKLIST_TASKS,
+        create_checklist_for_enrollment,
+        get_checklist_for_enrollment,
+        update_checklist_task,
+        update_checklist_task_email,
+        mark_checklist_email_sent,
+        get_checklist_task_recipients,
+        save_checklist_task_recipients,
     )
     
     get_all_notification_rules = get_notification_rules

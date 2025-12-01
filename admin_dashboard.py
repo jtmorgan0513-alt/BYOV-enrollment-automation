@@ -616,6 +616,153 @@ def _send_approval_notification(record, enrollment_id):
         return {'error': str(e)}
 
 
+def _render_checklist_tab(row, enrollment_id):
+    """Render the Checklist tab with task checkboxes and email send buttons."""
+    checklist = database.get_checklist_for_enrollment(enrollment_id)
+    
+    if not checklist:
+        database.create_checklist_for_enrollment(enrollment_id)
+        checklist = database.get_checklist_for_enrollment(enrollment_id)
+    
+    tech_name = row.get('full_name', 'Technician')
+    
+    st.markdown("#### Enrollment Checklist")
+    st.caption(f"Track completion of required tasks for {tech_name}")
+    
+    completed_count = sum(1 for task in checklist if task.get('completed'))
+    total_count = len(checklist)
+    progress = completed_count / total_count if total_count > 0 else 0
+    
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.progress(progress, text=f"{completed_count} of {total_count} tasks completed")
+    with col2:
+        if completed_count == total_count:
+            st.success("All Done!")
+    
+    st.markdown("---")
+    
+    for task in checklist:
+        task_id = task['id']
+        task_key = task['task_key']
+        task_name = task['task_name']
+        is_completed = task.get('completed', False)
+        email_recipient = task.get('email_recipient', '')
+        email_sent = task.get('email_sent', False)
+        
+        with st.container():
+            cols = st.columns([0.5, 4, 3, 2])
+            
+            with cols[0]:
+                new_status = st.checkbox(
+                    "",
+                    value=is_completed,
+                    key=f"check_{task_id}_{enrollment_id}",
+                    label_visibility="collapsed"
+                )
+                if new_status != is_completed:
+                    database.update_checklist_task(task_id, new_status)
+                    st.rerun()
+            
+            with cols[1]:
+                if is_completed:
+                    st.markdown(f"~~{task_name}~~")
+                    if task.get('completed_at'):
+                        st.caption(f"Completed {task['completed_at'][:10]}")
+                else:
+                    st.markdown(f"**{task_name}**")
+            
+            with cols[2]:
+                new_email = st.text_input(
+                    "Email",
+                    value=email_recipient,
+                    key=f"email_{task_id}_{enrollment_id}",
+                    placeholder="recipient@email.com",
+                    label_visibility="collapsed"
+                )
+                if new_email != email_recipient:
+                    database.update_checklist_task_email(task_id, new_email)
+            
+            with cols[3]:
+                if email_sent:
+                    st.markdown("✅ Sent")
+                else:
+                    if st.button("📧 Send", key=f"send_{task_id}_{enrollment_id}", disabled=not new_email):
+                        result = _send_checklist_notification(row, task_name, new_email, enrollment_id)
+                        if result and not result.get('error'):
+                            database.mark_checklist_email_sent(task_id)
+                            st.success("Email sent!")
+                            st.rerun()
+                        else:
+                            st.error(result.get('error', 'Failed to send email'))
+            
+            st.markdown("<hr style='margin: 8px 0; border: none; border-top: 1px solid #eee;'>", unsafe_allow_html=True)
+
+
+def _send_checklist_notification(row, task_name, recipient, enrollment_id):
+    """Send a notification email for a checklist task."""
+    from notifications import send_email_notification
+    
+    tech_name = row.get('full_name', 'Unknown')
+    tech_id = row.get('tech_id', 'N/A')
+    vehicle_info = f"{row.get('year', '')} {row.get('make', '')} {row.get('model', '')}".strip()
+    
+    subject = f"BYOV Task Update: {task_name} - {tech_name}"
+    
+    body = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; padding: 20px;">
+        <div style="max-width: 600px; margin: 0 auto;">
+            <div style="background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%); padding: 20px; border-radius: 10px 10px 0 0;">
+                <h2 style="color: white; margin: 0;">BYOV Enrollment Task Update</h2>
+            </div>
+            <div style="background: #f8f9fa; padding: 20px; border: 1px solid #dee2e6; border-top: none; border-radius: 0 0 10px 10px;">
+                <p style="font-size: 16px; margin-bottom: 20px;">
+                    <strong>Task:</strong> {task_name}
+                </p>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 8px; border-bottom: 1px solid #dee2e6;"><strong>Technician:</strong></td>
+                        <td style="padding: 8px; border-bottom: 1px solid #dee2e6;">{tech_name}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; border-bottom: 1px solid #dee2e6;"><strong>Tech ID:</strong></td>
+                        <td style="padding: 8px; border-bottom: 1px solid #dee2e6;">{tech_id}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; border-bottom: 1px solid #dee2e6;"><strong>District:</strong></td>
+                        <td style="padding: 8px; border-bottom: 1px solid #dee2e6;">{row.get('district', 'N/A')}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; border-bottom: 1px solid #dee2e6;"><strong>State:</strong></td>
+                        <td style="padding: 8px; border-bottom: 1px solid #dee2e6;">{row.get('state', 'N/A')}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px;"><strong>Vehicle:</strong></td>
+                        <td style="padding: 8px;">{vehicle_info}</td>
+                    </tr>
+                </table>
+                <p style="margin-top: 20px; color: #6c757d; font-size: 12px;">
+                    This notification was sent from the BYOV Enrollment System.
+                </p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    try:
+        result = send_email_notification(
+            to_emails=recipient,
+            subject=subject,
+            body=body,
+            is_html=True
+        )
+        return result
+    except Exception as e:
+        return {'error': str(e)}
+
+
 def _render_action_panel(enrollment_id, enrollments):
     """Render the tabbed action panel for a selected enrollment."""
     row = None
@@ -634,15 +781,18 @@ def _render_action_panel(enrollment_id, enrollments):
     tech_name = row.get('full_name', 'Selected Record')
     st.markdown(f"### {tech_name}")
     
-    tabs = st.tabs(["📋 Overview", "📄 Documents", "📧 Notification Settings"])
+    tabs = st.tabs(["📋 Overview", "✅ Checklist", "📄 Documents", "📧 Notification Settings"])
     
     with tabs[0]:
         _render_overview_tab(row, enrollment_id)
     
     with tabs[1]:
-        _render_documents_tab(row, enrollment_id)
+        _render_checklist_tab(row, enrollment_id)
     
     with tabs[2]:
+        _render_documents_tab(row, enrollment_id)
+    
+    with tabs[3]:
         _render_notification_settings_tab(row, enrollment_id)
 
 

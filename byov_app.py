@@ -1967,6 +1967,12 @@ def wizard_step_4():
                     # signed PDF
                     database.add_document(enrollment_db_id, 'signature', pdf_output_path)
 
+                    # Create checklist for new enrollment
+                    try:
+                        database.create_checklist_for_enrollment(enrollment_db_id)
+                    except Exception as e:
+                        logging.warning(f"Could not create checklist: {e}")
+
                     created_new = True
 
                 # Build application-level record for notifications and UI
