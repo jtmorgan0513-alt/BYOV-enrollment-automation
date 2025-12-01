@@ -38,6 +38,7 @@ if USE_POSTGRES:
         create_checklist_for_enrollment,
         get_checklist_for_enrollment,
         update_checklist_task,
+        mark_checklist_task_by_key,
         update_checklist_task_email,
         mark_checklist_email_sent,
         get_checklist_task_recipients,

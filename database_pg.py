@@ -598,6 +598,24 @@ def update_checklist_task(task_id: int, completed: bool, completed_by: str = "Ad
     return True
 
 
+def mark_checklist_task_by_key(enrollment_id: int, task_key: str, completed: bool = True, completed_by: str = "System") -> bool:
+    """Mark a checklist task as complete by enrollment_id and task_key."""
+    with get_cursor() as cursor:
+        if completed:
+            cursor.execute("""
+                UPDATE enrollment_checklist
+                SET completed = %s, completed_at = %s, completed_by = %s
+                WHERE enrollment_id = %s AND task_key = %s
+            """, (completed, datetime.now(), completed_by, enrollment_id, task_key))
+        else:
+            cursor.execute("""
+                UPDATE enrollment_checklist
+                SET completed = %s, completed_at = NULL, completed_by = NULL
+                WHERE enrollment_id = %s AND task_key = %s
+            """, (completed, enrollment_id, task_key))
+    return True
+
+
 def update_checklist_task_email(task_id: int, email_recipient: str) -> bool:
     """Update the email recipient for a checklist task."""
     with get_cursor() as cursor:

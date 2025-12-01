@@ -287,7 +287,9 @@ def _render_overview_tab(row, enrollment_id):
                 from notifications import send_hr_policy_notification
                 result = send_hr_policy_notification(row, signature_pdf[0])
                 if result.get('success'):
+                    database.mark_checklist_task_by_key(enrollment_id, 'policy_hshr', True, 'System - HR Email Sent')
                     st.success("Signed policy form sent to HR!")
+                    st.rerun()
                 else:
                     st.error(f"Error: {result.get('error', 'Unknown error')}")
         else:
@@ -330,6 +332,7 @@ def _handle_approval(row, enrollment_id):
         if status_code in (201,) or (200 <= status_code < 300 and status_code != 207):
             try:
                 database.approve_enrollment(enrollment_id)
+                database.mark_checklist_task_by_key(enrollment_id, 'approved_synced', True, 'System - Dashboard Sync')
             except Exception:
                 pass
             
@@ -338,6 +341,7 @@ def _handle_approval(row, enrollment_id):
         elif status_code == 207:
             try:
                 database.approve_enrollment(enrollment_id)
+                database.mark_checklist_task_by_key(enrollment_id, 'approved_synced', True, 'System - Dashboard Sync')
             except Exception:
                 pass
             
