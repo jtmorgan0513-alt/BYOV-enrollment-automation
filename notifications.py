@@ -421,6 +421,280 @@ def send_pdf_to_hr(record, hr_email, custom_subject=None):
     )
 
 
+def get_custom_html_template(record, selected_fields, field_metadata):
+    """Generate HTML email with only the selected fields."""
+    
+    submission_date = record.get('submission_date', '')
+    if submission_date:
+        try:
+            dt = datetime.fromisoformat(submission_date)
+            submission_date = dt.strftime("%m/%d/%Y at %I:%M %p")
+        except Exception:
+            pass
+    
+    fields_by_group = {}
+    for key in selected_fields:
+        meta = next((f for f in field_metadata if f['key'] == key), None)
+        if meta:
+            group = meta.get('group', 'Other')
+            if group not in fields_by_group:
+                fields_by_group[group] = []
+            
+            value = record.get(key, 'N/A')
+            if key in ('insurance_exp', 'registration_exp', 'submission_date') and value:
+                try:
+                    dt = datetime.fromisoformat(str(value))
+                    value = dt.strftime("%m/%d/%Y")
+                except Exception:
+                    pass
+            elif key == 'approved':
+                value = 'Yes' if value == 1 else 'No'
+            elif key == 'industry':
+                if isinstance(value, list):
+                    value = ', '.join(value) if value else 'N/A'
+            elif key == 'referred_by':
+                value = value or record.get('referredBy') or 'N/A'
+            
+            fields_by_group[group].append({
+                'label': meta['label'],
+                'value': value if value else 'N/A'
+            })
+    
+    group_colors = {
+        'Technician': '#0d6efd',
+        'Vehicle': '#28a745',
+        'Compliance': '#ffc107',
+        'Status': '#6c757d'
+    }
+    
+    content_html = ""
+    for group_name, fields in fields_by_group.items():
+        color = group_colors.get(group_name, '#0d6efd')
+        rows = "".join([
+            f'<tr><td style="padding: 6px 0; color: #666; width: 140px;">{f["label"]}:</td>'
+            f'<td style="padding: 6px 0; color: #333; font-weight: 500;">{f["value"]}</td></tr>'
+            for f in fields
+        ])
+        content_html += f'''
+        <div style="background: linear-gradient(to right, #f8f9fa, #ffffff); border-left: 4px solid {color}; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+            <h3 style="color: {color}; margin: 0 0 12px 0; font-size: 14px; text-transform: uppercase;">{group_name}</h3>
+            <table style="width: 100%; border-collapse: collapse;">{rows}</table>
+        </div>
+        '''
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f7fa;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <div style="text-align: center; padding: 16px; background-color: #ffffff; border-bottom: 2px solid #0066CC;">
+                <img src="cid:sears_logo" alt="Sears Home Services" style="max-width: 200px; height: auto;">
+            </div>
+            
+            <div style="background-color: #e8f4fc; padding: 16px; text-align: center; border-bottom: 3px solid #0d6efd;">
+                <h2 style="color: #0d6efd; margin: 0; font-size: 20px;">BYOV Enrollment Approved</h2>
+                <p style="color: #666; margin: 8px 0 0 0; font-size: 13px;">{submission_date}</p>
+            </div>
+            
+            <div style="padding: 24px;">
+                {content_html if content_html else '<p style="color: #666;">No fields selected for this notification.</p>'}
+                
+                <div style="background-color: #f8f9fa; padding: 16px; border-radius: 8px; text-align: center; margin-top: 16px;">
+                    <p style="color: #666; margin: 0; font-size: 11px;">
+                        This is an automated notification from the BYOV Enrollment System.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    return html
+
+
+def get_custom_plain_text(record, selected_fields, field_metadata):
+    """Generate plain text email with only the selected fields."""
+    lines = ["BYOV Enrollment Approved\n"]
+    
+    for key in selected_fields:
+        meta = next((f for f in field_metadata if f['key'] == key), None)
+        if meta:
+            value = record.get(key, 'N/A')
+            if key in ('insurance_exp', 'registration_exp', 'submission_date') and value:
+                try:
+                    dt = datetime.fromisoformat(str(value))
+                    value = dt.strftime("%m/%d/%Y")
+                except Exception:
+                    pass
+            elif key == 'approved':
+                value = 'Yes' if value == 1 else 'No'
+            elif key == 'industry' and isinstance(value, list):
+                value = ', '.join(value) if value else 'N/A'
+            
+            lines.append(f"- {meta['label']}: {value if value else 'N/A'}")
+    
+    lines.append("\nThis is an automated message from the BYOV Enrollment System.")
+    return "\n".join(lines)
+
+
+def send_custom_notification(record, recipients, subject, selected_fields, selected_docs, 
+                             field_metadata, enrollment_id=None):
+    """Send a custom email notification with selected fields and documents.
+    
+    Args:
+        record: Enrollment record dictionary
+        recipients: Email recipient(s) - string or list
+        subject: Email subject line
+        selected_fields: List of field keys to include in email body
+        selected_docs: List of document types to attach ('signature', 'vehicle', 'registration', 'insurance')
+        field_metadata: List of field metadata dicts with 'key', 'label', 'group'
+        enrollment_id: Optional enrollment ID to fetch documents from database
+    
+    Returns True on success, dict with 'error' key on failure.
+    """
+    import database
+    
+    email_config = st.secrets.get("email", {})
+    
+    if isinstance(recipients, str):
+        recipient_list = [r.strip() for r in recipients.split(',') if r.strip()]
+    elif isinstance(recipients, (list, tuple)):
+        recipient_list = [r for r in recipients if r]
+    else:
+        recipient_list = [str(recipients)] if recipients else []
+    
+    if not recipient_list:
+        return {'error': 'No recipients specified'}
+    
+    html_body = get_custom_html_template(record, selected_fields, field_metadata) if selected_fields else "<p>Enrollment approved.</p>"
+    plain_body = get_custom_plain_text(record, selected_fields, field_metadata) if selected_fields else "Enrollment approved."
+    
+    files = []
+    if enrollment_id and selected_docs:
+        try:
+            docs = database.get_documents_for_enrollment(enrollment_id)
+            for doc in docs:
+                if doc['doc_type'] in selected_docs:
+                    if file_storage.file_exists(doc['file_path']):
+                        files.append(doc['file_path'])
+        except Exception:
+            pass
+    
+    sg_key = email_config.get("sendgrid_api_key") or os.getenv("SENDGRID_API_KEY")
+    sg_from = email_config.get("sendgrid_from_email") or os.getenv("SENDGRID_FROM_EMAIL")
+    
+    if sg_key:
+        try:
+            sg_payload = {
+                "personalizations": [{"to": [{"email": r} for r in recipient_list]}],
+                "from": {"email": sg_from or "notifications@shs.com"},
+                "subject": subject,
+                "content": [
+                    {"type": "text/plain", "value": plain_body},
+                    {"type": "text/html", "value": html_body}
+                ]
+            }
+            
+            attachments = []
+            
+            if os.path.exists(LOGO_PATH):
+                try:
+                    with open(LOGO_PATH, 'rb') as f:
+                        logo_data = f.read()
+                    b64_logo = base64.b64encode(logo_data).decode()
+                    attachments.append({
+                        "content": b64_logo,
+                        "type": "image/png",
+                        "filename": "sears_logo.png",
+                        "disposition": "inline",
+                        "content_id": "sears_logo"
+                    })
+                except Exception:
+                    pass
+            
+            for file_path in files:
+                try:
+                    content = file_storage.read_file(file_path)
+                    if content:
+                        filename = os.path.basename(file_path)
+                        mime_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+                        b64_content = base64.b64encode(content).decode()
+                        attachments.append({
+                            "content": b64_content,
+                            "type": mime_type,
+                            "filename": filename
+                        })
+                except Exception:
+                    pass
+            
+            if attachments:
+                sg_payload["attachments"] = attachments
+            
+            resp = requests.post(
+                "https://api.sendgrid.com/v3/mail/send",
+                headers={
+                    "Authorization": f"Bearer {sg_key}",
+                    "Content-Type": "application/json"
+                },
+                data=json.dumps(sg_payload),
+                timeout=30
+            )
+            
+            if 200 <= resp.status_code < 300:
+                return True
+            else:
+                return {'error': f'SendGrid returned status {resp.status_code}'}
+        except Exception as e:
+            return {'error': str(e)}
+    
+    sender = email_config.get("sender")
+    app_password = email_config.get("app_password")
+    
+    if sender and app_password:
+        try:
+            msg = MIMEMultipart('related')
+            msg["From"] = sender
+            msg["To"] = ", ".join(recipient_list)
+            msg["Date"] = formatdate(localtime=True)
+            msg["Subject"] = subject
+            
+            msg_alt = MIMEMultipart('alternative')
+            msg_alt.attach(MIMEText(plain_body, "plain"))
+            msg_alt.attach(MIMEText(html_body, "html"))
+            msg.attach(msg_alt)
+            
+            if os.path.exists(LOGO_PATH):
+                with open(LOGO_PATH, 'rb') as f:
+                    logo_data = f.read()
+                logo_image = MIMEImage(logo_data, _subtype='png')
+                logo_image.add_header('Content-ID', '<sears_logo>')
+                msg.attach(logo_image)
+            
+            for file_path in files:
+                try:
+                    content = file_storage.read_file(file_path)
+                    if content:
+                        part = MIMEApplication(content)
+                        part.add_header('Content-Disposition', 'attachment', filename=os.path.basename(file_path))
+                        msg.attach(part)
+                except Exception:
+                    pass
+            
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+                server.login(sender, app_password)
+                server.sendmail(sender, recipient_list, msg.as_string())
+            return True
+        except Exception as e:
+            return {'error': str(e)}
+    
+    return {'error': 'No email service configured'}
+
+
 def get_email_config_status():
     """Get the current email configuration status for display."""
     email_config = st.secrets.get("email", {})
