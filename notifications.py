@@ -523,21 +523,12 @@ def send_hr_policy_notification(record, pdf_path, hr_email="tyler.morgan@transfo
     html_body = get_hr_notification_html(record)
     
     try:
-        sg_key = None
-        try:
-            sg_key = st.secrets.get("SENDGRID_API_KEY")
-        except Exception:
-            pass
-        if not sg_key:
-            sg_key = os.environ.get("SENDGRID_API_KEY")
+        email_config = st.secrets.get("email", {})
+        sender = email_config.get("sender")
+        app_password = email_config.get("app_password")
         
-        sender = None
-        app_password = None
-        try:
-            sender = st.secrets.get("gmail", {}).get("sender")
-            app_password = st.secrets.get("gmail", {}).get("app_password")
-        except Exception:
-            pass
+        sg_key = email_config.get("sendgrid_api_key") or os.getenv("SENDGRID_API_KEY")
+        sg_from = email_config.get("sendgrid_from_email") or os.getenv("SENDGRID_FROM_EMAIL")
         
         pdf_bytes = file_storage.read_file(pdf_path)
         pdf_filename = os.path.basename(pdf_path)
@@ -567,7 +558,7 @@ def send_hr_policy_notification(record, pdf_path, hr_email="tyler.morgan@transfo
                 
                 payload = {
                     "personalizations": [{"to": [{"email": hr_email}]}],
-                    "from": {"email": os.environ.get("SENDGRID_FROM_EMAIL", "noreply@searshomeservices.com")},
+                    "from": {"email": sg_from or sender or "noreply@searshomeservices.com"},
                     "subject": subject,
                     "content": [{"type": "text/html", "value": html_body}],
                     "attachments": attachments
@@ -621,7 +612,7 @@ def send_hr_policy_notification(record, pdf_path, hr_email="tyler.morgan@transfo
             
             return {'success': True}
         
-        return {'error': 'No email credentials configured (SendGrid or Gmail)'}
+        return {'error': 'No email credentials configured. Add [email] section to secrets.toml with sender and app_password.'}
         
     except Exception as e:
         return {'error': str(e)}
