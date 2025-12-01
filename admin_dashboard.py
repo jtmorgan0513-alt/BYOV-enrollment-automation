@@ -617,7 +617,7 @@ def _send_approval_notification(record, enrollment_id):
 
 
 def _render_checklist_tab(row, enrollment_id):
-    """Render the Checklist tab with task checkboxes and email send buttons."""
+    """Render the Checklist tab with task checkboxes."""
     checklist = database.get_checklist_for_enrollment(enrollment_id)
     
     if not checklist:
@@ -644,59 +644,29 @@ def _render_checklist_tab(row, enrollment_id):
     
     for task in checklist:
         task_id = task['id']
-        task_key = task['task_key']
         task_name = task['task_name']
         is_completed = task.get('completed', False)
-        email_recipient = task.get('email_recipient', '')
-        email_sent = task.get('email_sent', False)
         
-        with st.container():
-            cols = st.columns([0.5, 4, 3, 2])
-            
-            with cols[0]:
-                new_status = st.checkbox(
-                    "",
-                    value=is_completed,
-                    key=f"check_{task_id}_{enrollment_id}",
-                    label_visibility="collapsed"
-                )
-                if new_status != is_completed:
-                    database.update_checklist_task(task_id, new_status)
-                    st.rerun()
-            
-            with cols[1]:
-                if is_completed:
-                    st.markdown(f"~~{task_name}~~")
-                    if task.get('completed_at'):
-                        st.caption(f"Completed {task['completed_at'][:10]}")
-                else:
-                    st.markdown(f"**{task_name}**")
-            
-            with cols[2]:
-                new_email = st.text_input(
-                    "Email",
-                    value=email_recipient,
-                    key=f"email_{task_id}_{enrollment_id}",
-                    placeholder="recipient@email.com",
-                    label_visibility="collapsed"
-                )
-                if new_email != email_recipient:
-                    database.update_checklist_task_email(task_id, new_email)
-            
-            with cols[3]:
-                if email_sent:
-                    st.markdown("✅ Sent")
-                else:
-                    if st.button("📧 Send", key=f"send_{task_id}_{enrollment_id}", disabled=not new_email):
-                        result = _send_checklist_notification(row, task_name, new_email, enrollment_id)
-                        if result and not result.get('error'):
-                            database.mark_checklist_email_sent(task_id)
-                            st.success("Email sent!")
-                            st.rerun()
-                        else:
-                            st.error(result.get('error', 'Failed to send email'))
-            
-            st.markdown("<hr style='margin: 8px 0; border: none; border-top: 1px solid #eee;'>", unsafe_allow_html=True)
+        col1, col2 = st.columns([0.5, 5])
+        
+        with col1:
+            new_status = st.checkbox(
+                "",
+                value=is_completed,
+                key=f"check_{task_id}_{enrollment_id}",
+                label_visibility="collapsed"
+            )
+            if new_status != is_completed:
+                database.update_checklist_task(task_id, new_status)
+                st.rerun()
+        
+        with col2:
+            if is_completed:
+                st.markdown(f"~~{task_name}~~")
+                if task.get('completed_at'):
+                    st.caption(f"Completed {task['completed_at'][:10]}")
+            else:
+                st.markdown(f"**{task_name}**")
 
 
 def _send_checklist_notification(row, task_name, recipient, enrollment_id):

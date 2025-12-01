@@ -514,13 +514,12 @@ def save_approval_notification_settings(settings: Dict[str, Any]) -> bool:
 
 
 CHECKLIST_TASKS = [
-    {'key': 'approved_synced', 'name': 'Approved Enrollment & Synced to Dashboard', 'default_recipient': ''},
-    {'key': 'mileage_segno', 'name': 'Mileage form created in Segno', 'default_recipient': ''},
-    {'key': 'fleet_truck', 'name': 'Fleet Notified for Truck Number', 'default_recipient': ''},
-    {'key': 'inventory_assortment', 'name': 'Inventory Notified for Assortment', 'default_recipient': ''},
-    {'key': 'supplies_magnets', 'name': 'Supplies Notified for Magnets', 'default_recipient': ''},
-    {'key': 'policy_hshr', 'name': 'Signed Policy Form Sent to HSHRpaperwork', 'default_recipient': ''},
-    {'key': 'survey_completed', 'name': 'Survey Completed', 'default_recipient': ''},
+    {'key': 'approved_synced', 'name': 'Approved Enrollment & Synced to Dashboard'},
+    {'key': 'policy_hshr', 'name': 'Signed Policy Form Sent to HSHRpaperwork'},
+    {'key': 'mileage_segno', 'name': 'Mileage form created in Segno'},
+    {'key': 'supplies_magnets', 'name': 'Supplies Notified for Magnets'},
+    {'key': 'fleet_inventory', 'name': 'Fleet & Inventory Notified'},
+    {'key': 'survey_30day', 'name': '30 Day survey completed'},
 ]
 
 
