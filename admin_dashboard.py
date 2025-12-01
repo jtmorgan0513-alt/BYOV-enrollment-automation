@@ -251,6 +251,17 @@ def _render_overview_tab(row, enrollment_id):
             st.success("Status: Approved")
         else:
             st.warning("Status: Pending")
+        
+        checklist = database.get_checklist_for_enrollment(enrollment_id)
+        if checklist:
+            completed_count = sum(1 for task in checklist if task.get('completed'))
+            total_count = len(checklist)
+            if completed_count == total_count:
+                st.success(f"Checklist: {completed_count}/{total_count} ✓")
+            elif completed_count > 0:
+                st.info(f"Checklist: {completed_count}/{total_count}")
+            else:
+                st.caption(f"Checklist: {completed_count}/{total_count}")
     
     st.markdown("---")
     
