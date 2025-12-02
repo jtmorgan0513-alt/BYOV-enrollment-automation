@@ -1,0 +1,61 @@
+{
+  "timestamp": "2025-12-02T23:47:50.319884",
+  "database_type": "postgresql",
+  "enrollments": [
+    {
+      "id": 8,
+      "full_name": "Maria Garcia",
+      "tech_id": "mgarcia02",
+      "district": "8175",
+      "state": "California",
+      "referred_by": "Sarah Wilson",
+      "industries": [],
+      "industry": [
+        "Appliance Repair"
+      ],
+      "year": "2023",
+      "make": "RAM",
+      "model": "1500",
+      "vin": "1C6SRFFT4PN654321",
+      "insurance_exp": "09/30/2026",
+      "registration_exp": "07/10/2026",
+      "template_used": null,
+      "comment": null,
+      "submission_date": "2025-12-01 00:00:00+00:00",
+      "approved": 0,
+      "approved_at": null,
+      "approved_by": null,
+      "dashboard_tech_id": null,
+      "last_upload_report": null,
+      "documents": []
+    },
+    {
+      "id": 9,
+      "full_name": "David Lee",
+      "tech_id": "dlee03",
+      "district": "8150",
+      "state": "Florida",
+      "referred_by": "Tom Brown",
+      "industries": [],
+      "industry": [
+        "Laundry"
+      ],
+      "year": "2021",
+      "make": "TOYOTA",
+      "model": "Tacoma",
+      "vin": "3TMCZ5AN2MM987654",
+      "insurance_exp": "12/01/2026",
+      "registration_exp": "11/15/2026",
+      "template_used": null,
+      "comment": null,
+      "submission_date": "2025-12-01 00:00:00+00:00",
+      "approved": 0,
+      "approved_at": null,
+      "approved_by": null,
+      "dashboard_tech_id": null,
+      "last_upload_report": null,
+      "documents": []
+    }
+  ],
+  "notification_rules": []
+}
