@@ -1,0 +1,134 @@
+{
+  "timestamp": "2025-12-03T00:46:58.024998",
+  "database_type": "postgresql",
+  "enrollments": [
+    {
+      "id": 11,
+      "full_name": "Test Man",
+      "tech_id": "Test09",
+      "district": "8175",
+      "state": "North Carolina",
+      "referred_by": "Tyler",
+      "industries": [
+        "Cook",
+        "Dish",
+        "Laundry",
+        "Micro",
+        "Ref"
+      ],
+      "industry": [
+        "Cook",
+        "Dish",
+        "Laundry",
+        "Micro",
+        "Ref"
+      ],
+      "year": "2024",
+      "make": "FORD",
+      "model": "F-150",
+      "vin": "1FTEW2LP5RKE34425",
+      "insurance_exp": "2025-12-31",
+      "registration_exp": "2025-12-31",
+      "template_used": "template_1.pdf",
+      "comment": "",
+      "submission_date": "2025-12-02 23:47:43.720646+00:00",
+      "approved": 0,
+      "approved_at": null,
+      "approved_by": null,
+      "dashboard_tech_id": null,
+      "last_upload_report": null,
+      "documents": [
+        {
+          "id": 50,
+          "doc_type": "vehicle",
+          "file_path": "uploads/Test09_096101cc-20da-4268-9c14-c8750ae94288/vehicle/vehicle_1.jpeg"
+        },
+        {
+          "id": 51,
+          "doc_type": "vehicle",
+          "file_path": "uploads/Test09_096101cc-20da-4268-9c14-c8750ae94288/vehicle/vehicle_2.jpeg"
+        },
+        {
+          "id": 52,
+          "doc_type": "vehicle",
+          "file_path": "uploads/Test09_096101cc-20da-4268-9c14-c8750ae94288/vehicle/vehicle_3.jpeg"
+        },
+        {
+          "id": 53,
+          "doc_type": "vehicle",
+          "file_path": "uploads/Test09_096101cc-20da-4268-9c14-c8750ae94288/vehicle/vehicle_4.jpeg"
+        },
+        {
+          "id": 54,
+          "doc_type": "insurance",
+          "file_path": "uploads/Test09_096101cc-20da-4268-9c14-c8750ae94288/insurance/insurance_1.jpeg"
+        },
+        {
+          "id": 55,
+          "doc_type": "registration",
+          "file_path": "uploads/Test09_096101cc-20da-4268-9c14-c8750ae94288/registration/registration_1.jpeg"
+        },
+        {
+          "id": 56,
+          "doc_type": "signature",
+          "file_path": "pdfs/Test09_096101cc-20da-4268-9c14-c8750ae94288.pdf"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "full_name": "Maria Garcia",
+      "tech_id": "mgarcia02",
+      "district": "8175",
+      "state": "California",
+      "referred_by": "Sarah Wilson",
+      "industries": [],
+      "industry": [
+        "Appliance Repair"
+      ],
+      "year": "2023",
+      "make": "RAM",
+      "model": "1500",
+      "vin": "1C6SRFFT4PN654321",
+      "insurance_exp": "09/30/2026",
+      "registration_exp": "07/10/2026",
+      "template_used": null,
+      "comment": null,
+      "submission_date": "2025-12-01 00:00:00+00:00",
+      "approved": 0,
+      "approved_at": null,
+      "approved_by": null,
+      "dashboard_tech_id": null,
+      "last_upload_report": null,
+      "documents": []
+    },
+    {
+      "id": 9,
+      "full_name": "David Lee",
+      "tech_id": "dlee03",
+      "district": "8150",
+      "state": "Florida",
+      "referred_by": "Tom Brown",
+      "industries": [],
+      "industry": [
+        "Laundry"
+      ],
+      "year": "2021",
+      "make": "TOYOTA",
+      "model": "Tacoma",
+      "vin": "3TMCZ5AN2MM987654",
+      "insurance_exp": "12/01/2026",
+      "registration_exp": "11/15/2026",
+      "template_used": null,
+      "comment": null,
+      "submission_date": "2025-12-01 00:00:00+00:00",
+      "approved": 0,
+      "approved_at": null,
+      "approved_by": null,
+      "dashboard_tech_id": null,
+      "last_upload_report": null,
+      "documents": []
+    }
+  ],
+  "notification_rules": []
+}

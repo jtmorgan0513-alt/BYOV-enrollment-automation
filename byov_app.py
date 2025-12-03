@@ -2,6 +2,7 @@ import json
 import os
 import re
 import shutil
+import base64
 from datetime import date, datetime
 import io
 
@@ -2705,10 +2706,57 @@ def render_file_gallery_modal(original_row, selected_row, tech_id):
                                     width='stretch'
                                 )
     
-    # Signed PDF section
+    # Signed PDF section with inline viewer
     pdf_path = original_row.get('signature_pdf_path')
     if pdf_path and os.path.exists(pdf_path):
-        render_file_grid([pdf_path], "Signed Agreement", "📄")
+        st.markdown('<div class="file-section-title">📄 Signed Agreement</div>', unsafe_allow_html=True)
+        
+        # Toggle for expanded view
+        viewer_key = f"pdf_expanded_{tech_id}"
+        if viewer_key not in st.session_state:
+            st.session_state[viewer_key] = False
+        
+        col_toggle, col_download = st.columns([3, 1])
+        with col_toggle:
+            if st.button(
+                "🔍 Expand View" if not st.session_state[viewer_key] else "🔍 Collapse View",
+                key=f"toggle_pdf_{tech_id}"
+            ):
+                st.session_state[viewer_key] = not st.session_state[viewer_key]
+                st.rerun()
+        
+        with col_download:
+            with open(pdf_path, "rb") as f:
+                st.download_button(
+                    label="⬇ Download",
+                    data=f.read(),
+                    file_name=os.path.basename(pdf_path),
+                    mime="application/pdf",
+                    key=f"dl_signed_pdf_{tech_id}"
+                )
+        
+        # Inline PDF viewer using base64 iframe
+        try:
+            with open(pdf_path, "rb") as pdf_file:
+                pdf_data = pdf_file.read()
+                base64_pdf = base64.b64encode(pdf_data).decode('utf-8')
+                
+                # Set height based on expanded state
+                pdf_height = 800 if st.session_state[viewer_key] else 500
+                
+                pdf_display = f'''
+                <iframe 
+                    src="data:application/pdf;base64,{base64_pdf}" 
+                    width="100%" 
+                    height="{pdf_height}px" 
+                    style="border: 1px solid #ddd; border-radius: 8px;"
+                    type="application/pdf">
+                </iframe>
+                '''
+                st.markdown(pdf_display, unsafe_allow_html=True)
+        except Exception as e:
+            st.error(f"Could not load PDF preview: {e}")
+        
         st.markdown("---")
     
     # Vehicle photos
