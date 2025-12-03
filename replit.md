@@ -40,6 +40,11 @@ Preferred communication style: Simple, everyday language.
 - **PDF Creation:** ReportLab for generating enrollment PDFs
 - **Template System:** State-based template selection (different templates for CA/WA/IL vs other states)
 - **Signature Embedding:** PyPDF2 for merging signature canvas into final PDF
+- **Page 6 Element Placement** (coordinates for signature page):
+  - Signature: x=73, y=442, width=160, height=28
+  - Employee Name: x=257, y=545
+  - Tech ID: x=257, y=531
+  - Date: x=316, y=442
 
 #### Notification System
 - **Email Delivery:** SendGrid API (primary) with SMTP fallback via `secrets.toml` or environment variables
