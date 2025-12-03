@@ -72,7 +72,7 @@ Preferred communication style: Simple, everyday language.
      - 30 Day survey completed
      - Simple checkbox interface (no email function)
      - Progress bar shows completion status
-   - **Documents Tab:** Inline PDF preview via iframe, photo thumbnails by category (Vehicle, Registration, Insurance)
+   - **Documents Tab:** Inline PDF viewer (base64 iframe with expand/collapse toggle), photo thumbnails by category (Vehicle, Registration, Insurance)
    - **Global Approval Notifications Tab** (top-level tab next to Email Config):
      - Field selector checkboxes (choose which data fields to include in email)
      - Document selector checkboxes (choose which photos/PDFs to attach)
