@@ -42,8 +42,8 @@ Preferred communication style: Simple, everyday language.
 - **Signature Embedding:** PyPDF2 for merging signature canvas into final PDF
 - **Page 6 Element Placement** (coordinates for signature page):
   - Signature: x=73, y=442, width=160, height=28
-  - Employee Name: x=257, y=545
-  - Tech ID: x=257, y=531
+  - Employee Name: x=257, y=547
+  - Tech ID: x=257, y=533
   - Date: x=316, y=442
 
 #### Notification System

@@ -151,7 +151,7 @@ def save_uploaded_files(uploaded_files, folder_path: str, prefix: str) -> list:
 def generate_signed_pdf(template_path: str, signature_image, output_path: str,
                         sig_x: int = 73, sig_y: int = 442, date_x: int = 316, date_y: int = 442,
                         employee_name: str = None, tech_id: str = None,
-                        name_x: int = 257, name_y: int = 545, tech_id_x: int = 257, tech_id_y: int = 531,
+                        name_x: int = 257, name_y: int = 547, tech_id_x: int = 257, tech_id_y: int = 533,
                         sig_width: int = 160, sig_height: int = 28) -> bool:
     """Generate a PDF with signature, date, name, and tech ID overlay on page 6 (index 5).
     Returns True on success, False on failure.
@@ -1870,9 +1870,9 @@ def wizard_step_4():
                 date_x = 316
                 date_y = 442
                 name_x = 257
-                name_y = 545
+                name_y = 547
                 tech_id_x = 257
-                tech_id_y = 531
+                tech_id_y = 533
                 sig_width = 160
                 sig_height = 28
                 
@@ -2420,9 +2420,9 @@ def page_new_enrollment_OLD():
                 date_x = st.session_state.get('date_x', 316)
                 date_y = st.session_state.get('date_y', 442)
                 name_x = st.session_state.get('name_x', 257)
-                name_y = st.session_state.get('name_y', 545)
+                name_y = st.session_state.get('name_y', 547)
                 tech_id_x = st.session_state.get('tech_id_x', 257)
-                tech_id_y = st.session_state.get('tech_id_y', 531)
+                tech_id_y = st.session_state.get('tech_id_y', 533)
                 sig_width = st.session_state.get('sig_width', 160)
                 sig_height = st.session_state.get('sig_height', 28)
                 
