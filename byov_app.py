@@ -149,9 +149,10 @@ def save_uploaded_files(uploaded_files, folder_path: str, prefix: str) -> list:
 
 
 def generate_signed_pdf(template_path: str, signature_image, output_path: str,
-                        sig_x: int = 375, sig_y: int = 508, date_x: int = 505, date_y: int = 492,
+                        sig_x: int = 73, sig_y: int = 442, date_x: int = 316, date_y: int = 442,
                         employee_name: str = None, tech_id: str = None,
-                        name_x: int = 360, name_y: int = 492, tech_id_x: int = 360, tech_id_y: int = 476) -> bool:
+                        name_x: int = 257, name_y: int = 545, tech_id_x: int = 257, tech_id_y: int = 531,
+                        sig_width: int = 160, sig_height: int = 28) -> bool:
     """Generate a PDF with signature, date, name, and tech ID overlay on page 6 (index 5).
     Returns True on success, False on failure.
     
@@ -176,7 +177,7 @@ def generate_signed_pdf(template_path: str, signature_image, output_path: str,
         if signature_image is not None:
             temp_sig_path = "temp_signature.png"
             signature_image.save(temp_sig_path, format='PNG')
-            can.drawImage(temp_sig_path, sig_x, sig_y, width=120, height=40,
+            can.drawImage(temp_sig_path, sig_x, sig_y, width=sig_width, height=sig_height,
                           preserveAspectRatio=True, mask='auto')
             try:
                 os.remove(temp_sig_path)
@@ -1863,15 +1864,17 @@ def wizard_step_4():
                 pdf_filename = f"{sanitize_filename(data['tech_id'])}_{record_id}.pdf"
                 pdf_output_path = os.path.join("pdfs", pdf_filename)
                 
-                # Updated signature positions per user specifications
-                sig_x = 375
-                sig_y = 508
-                date_x = 505
-                date_y = 492
-                name_x = 360
-                name_y = 492
-                tech_id_x = 360
-                tech_id_y = 476
+                # Signature positions extracted from user's marked-up PDF
+                sig_x = 73
+                sig_y = 442
+                date_x = 316
+                date_y = 442
+                name_x = 257
+                name_y = 545
+                tech_id_x = 257
+                tech_id_y = 531
+                sig_width = 160
+                sig_height = 28
                 
                 pdf_success = generate_signed_pdf(
                     data['template_file'],
@@ -1886,7 +1889,9 @@ def wizard_step_4():
                     name_x=name_x,
                     name_y=name_y,
                     tech_id_x=tech_id_x,
-                    tech_id_y=tech_id_y
+                    tech_id_y=tech_id_y,
+                    sig_width=sig_width,
+                    sig_height=sig_height
                 )
                 
                 if not pdf_success:
@@ -2409,15 +2414,17 @@ def page_new_enrollment_OLD():
                 pdf_filename = f"{sanitize_filename(tech_id)}_{record_id}.pdf"
                 pdf_output_path = os.path.join("pdfs", pdf_filename)
                 
-                # Updated signature positions per user specifications
-                sig_x = st.session_state.get('sig_x', 375)
-                sig_y = st.session_state.get('sig_y', 508)
-                date_x = st.session_state.get('date_x', 505)
-                date_y = st.session_state.get('date_y', 492)
-                name_x = st.session_state.get('name_x', 360)
-                name_y = st.session_state.get('name_y', 492)
-                tech_id_x = st.session_state.get('tech_id_x', 360)
-                tech_id_y = st.session_state.get('tech_id_y', 476)
+                # Signature positions extracted from user's marked-up PDF
+                sig_x = st.session_state.get('sig_x', 73)
+                sig_y = st.session_state.get('sig_y', 442)
+                date_x = st.session_state.get('date_x', 316)
+                date_y = st.session_state.get('date_y', 442)
+                name_x = st.session_state.get('name_x', 257)
+                name_y = st.session_state.get('name_y', 545)
+                tech_id_x = st.session_state.get('tech_id_x', 257)
+                tech_id_y = st.session_state.get('tech_id_y', 531)
+                sig_width = st.session_state.get('sig_width', 160)
+                sig_height = st.session_state.get('sig_height', 28)
                 
                 pdf_success = generate_signed_pdf(
                     template_file, 
@@ -2432,7 +2439,9 @@ def page_new_enrollment_OLD():
                     name_x=name_x,
                     name_y=name_y,
                     tech_id_x=tech_id_x,
-                    tech_id_y=tech_id_y
+                    tech_id_y=tech_id_y,
+                    sig_width=sig_width,
+                    sig_height=sig_height
                 )
                 
                 if not pdf_success:
